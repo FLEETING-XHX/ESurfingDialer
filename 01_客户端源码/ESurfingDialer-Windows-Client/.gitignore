@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+.idea/
+dist/
+*.user
+*.suo
+core/ESurfingDialerCore/build/
+core/ESurfingDialerCore/.gradle/
