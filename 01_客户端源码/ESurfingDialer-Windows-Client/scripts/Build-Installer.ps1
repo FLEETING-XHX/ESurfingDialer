@@ -14,4 +14,4 @@ if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup build failed."
 }
 
-Write-Host "Installer output: $(Join-Path $repoRoot 'dist\ESurfingDialer-Lite-v1.00-Setup.exe')"
+Write-Host "Installer output: $(Join-Path $repoRoot 'dist\ESurfingDialer-Lite-v1.01-Setup.exe')"

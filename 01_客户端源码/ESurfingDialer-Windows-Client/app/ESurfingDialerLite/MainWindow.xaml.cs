@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Navigation;
 using System.Windows.Threading;
 
 namespace ESurfingDialerLite;
@@ -121,6 +122,16 @@ public partial class MainWindow : Window
         _exitRequested = true;
         _dialer.Stop();
         System.Windows.Application.Current.Shutdown();
+    }
+
+    private void SourceLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = e.Uri.AbsoluteUri,
+            UseShellExecute = true
+        });
+        e.Handled = true;
     }
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)

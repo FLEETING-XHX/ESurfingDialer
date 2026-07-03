@@ -1,4 +1,4 @@
-# Roadmap
+﻿# Roadmap
 
 ## Phase 1 - Desktop Shell
 
@@ -26,6 +26,9 @@
 
 - Inno Setup installer
 - Install directory selection
+- Treat the install directory picker as a parent-folder picker: if the user chooses `D:\software`, install into `D:\software\ESurfingDialer Lite`; avoid scattering files directly into the selected parent folder and avoid ambiguous double-folder behavior.
 - Desktop shortcut
 - Start menu shortcut
 - Uninstall cleanup choices
+
+

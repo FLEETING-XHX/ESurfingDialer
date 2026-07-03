@@ -103,8 +103,19 @@
         </Border>
 
         <DockPanel Grid.Row="4" Margin="0,14,0,0">
-            <TextBlock DockPanel.Dock="Left" Text="关闭窗口会隐藏到托盘，不会退出后台。" Foreground="{StaticResource MutedTextBrush}"/>
-            <Button DockPanel.Dock="Right" Content="退出" Click="ExitButton_Click" Margin="8,0,0,0"/>
+            <TextBlock DockPanel.Dock="Left"
+                       Text="免费开源项目"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedTextBrush}"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}">
+                    <Hyperlink NavigateUri="https://github.com/Itsuwarii/ESurfingDialer"
+                               RequestNavigate="SourceLink_RequestNavigate">
+                        感谢 Itsuwarii 大佬的开源
+                    </Hyperlink>
+                </TextBlock>
+                <Button Content="退出" Click="ExitButton_Click" Margin="12,0,0,0"/>
+            </StackPanel>
         </DockPanel>
     </Grid>
 </Window>
