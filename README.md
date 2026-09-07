@@ -9,7 +9,7 @@
 
 ## 下载
 
-- 最新离线部署包： [Release v1.22](https://github.com/FLEETING-XHX/ESurfingDialer-Docker/releases/tag/v1.22)
+- 最新离线部署包： [Release v1.3](https://github.com/FLEETING-XHX/ESurfingDialer-Docker/releases/tag/v1.3)
 
 ## 适用场景
 
@@ -31,8 +31,8 @@
 下载 Release 中的离线包，上传到软路由后解压：
 
 ```sh
-unzip ESurfingDialer-Itsuwarii-Docker-Fixed-v1.22.zip
-cd ESurfingDialer-Itsuwarii-Docker-Fixed-v1.22
+unzip ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip
+cd ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3
 sh install.sh
 ```
 

@@ -1,5 +1,20 @@
 # Changelog
 
+# 2026-09-07 v1.3 reauth prediction
+
+- Added an automatic reauthentication planner that learns from successful logins and keeps a predicted next reauth time on disk.
+- Added a safety-window scheduler so proactive reauth can be shifted into quiet hours, with a default window of 04:00-06:00.
+- Added `AUTO_REAUTH_ENABLED=1|0` plus safe-window hour controls to the Docker environment and offline installer.
+- Updated the Docker image tag and project version to `v1.3`.
+
+## 2026-07-10 v1.23 recovery fix
+
+- Require a successful keep heartbeat before reporting `LOGIN_SUCCESS`, avoiding false authentication when the campus portal still rejects traffic after a login response.
+- Reset the recovery budget after confirmed authentication and clear stale OkHttp connections during session cleanup.
+- Add bounded login confirmation settings: `LOGIN_CONFIRMATION_ATTEMPTS` and `LOGIN_CONFIRMATION_INTERVAL_SECONDS`.
+- Harden the optional OpenWrt watchdog to inspect container thread/health-file liveness instead of restarting on captive-portal redirects or rebooting the router.
+- Use Asia/Shanghai timestamps in the runtime image and persisted log filenames by default.
+
 ## 2026-07-07 v1.22 offline rebuild
 
 - Built v1.22 for the portal recovery hardening fix.

@@ -32,6 +32,7 @@ object HealthStatus {
     fun write() {
         try {
             val now = now()
+            val planner = ReauthPlanner.snapshot()
             val escapedError = lastError?.take(240)?.replace("\\", "\\\\")?.replace("\"", "\\\"")
             File(States.rootDir, "health.json").writeText(
                 """
@@ -45,6 +46,14 @@ object HealthStatus {
                   "lastLoginSuccessAt": $lastLoginSuccessAt,
                   "lastHeartbeatSuccessAt": $lastHeartbeatSuccessAt,
                   "lastPortalReauthRequestAt": $lastPortalReauthRequestAt,
+                  "autoReauthEnabled": ${planner.enabled},
+                  "autoReauthEstimatedLifetimeSeconds": ${planner.estimatedLifetimeSeconds},
+                  "autoReauthLastAuthSuccessAt": ${planner.lastAuthSuccessAt},
+                  "autoReauthNextPlannedAt": ${planner.nextPlannedReauthAt},
+                  "autoReauthLastObservedLifetimeSeconds": ${planner.lastObservedLifetimeSeconds},
+                  "autoReauthSuccessfulAuthSamples": ${planner.successfulAuthSamples},
+                  "autoReauthSafeWindowStartHour": ${planner.safeWindowStartHour},
+                  "autoReauthSafeWindowEndHour": ${planner.safeWindowEndHour},
                   "consecutiveHeartbeatFailures": ${consecutiveHeartbeatFailures.get()},
                   "consecutivePortalDetections": ${consecutivePortalDetections.get()},
                   "lastError": ${if (escapedError == null) "null" else "\"$escapedError\""}

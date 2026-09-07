@@ -5,8 +5,16 @@ state_dir="${STATE_DIR:-/data}"
 log_dir="${LOG_DIR:-$state_dir/logs}"
 log_retention_days="${LOG_RETENTION_DAYS:-3}"
 backend="${DIALER_BACKEND:-auto}"
+timezone="${TZ:-Asia/Shanghai}"
+log_timezone="$timezone"
 arch="$(uname -m 2>/dev/null || echo unknown)"
 dynarmic_arg=""
+
+if [ "$timezone" = "Asia/Shanghai" ] && [ ! -e /usr/share/zoneinfo/Asia/Shanghai ]; then
+  # POSIX TZ fallback keeps shell-generated log filenames on UTC+8 even in a
+  # minimal image without the tzdata package. The JVM uses its bundled tzdb.
+  log_timezone="CST-8"
+fi
 
 if [ -z "${DIALER_USER:-}" ]; then
   echo "ERROR: DIALER_USER is required" >&2
@@ -63,7 +71,7 @@ mkfifo "$fifo"
 
 (
   while IFS= read -r line; do
-    log_file="$log_dir/dialer-$(date +%F).log"
+    log_file="$log_dir/dialer-$(TZ="$log_timezone" date +%F).log"
     printf '%s\n' "$line" | tee -a "$log_file"
   done < "$fifo"
 ) &
@@ -73,6 +81,7 @@ echo "BACKEND_SELECTED backend=${backend} arch=${arch} dynarmic=${dynarmic_arg:+
 
 run_java() {
   java ${JAVA_OPTS:-} \
+    -Duser.timezone="$timezone" \
     -jar /app/client.jar \
     -u "${DIALER_USER}" \
     -p "${DIALER_PASSWORD}" \
@@ -80,7 +89,7 @@ run_java() {
 }
 
 if command -v su-exec >/dev/null 2>&1 && id esurfing >/dev/null 2>&1; then
-  DYNARMIC_ARG="$dynarmic_arg" su-exec esurfing sh -c 'java ${JAVA_OPTS:-} -jar /app/client.jar -u "$DIALER_USER" -p "$DIALER_PASSWORD" ${DYNARMIC_ARG:-}' > "$fifo" 2>&1 &
+  DYNARMIC_ARG="$dynarmic_arg" DIALER_TIMEZONE="$timezone" su-exec esurfing sh -c 'java ${JAVA_OPTS:-} -Duser.timezone="$DIALER_TIMEZONE" -jar /app/client.jar -u "$DIALER_USER" -p "$DIALER_PASSWORD" ${DYNARMIC_ARG:-}' > "$fifo" 2>&1 &
 else
   DYNARMIC_ARG="$dynarmic_arg" run_java > "$fifo" 2>&1 &
 fi

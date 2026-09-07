@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-VERSION="v1.22"
-IMAGE_NAME="esurfing-dialer:v1.22"
+VERSION="v1.3"
+IMAGE_NAME="esurfing-dialer:v1.3"
 
 info() {
   printf '%s\n' "$*"
@@ -40,7 +40,21 @@ image_file="images/esurfing-dialer-${VERSION}-${package_arch}.tar.gz"
 mkdir -p data
 
 if [ -f ".env" ]; then
-  info ".env already exists. Keeping existing configuration."
+  info ".env already exists. Keeping credentials and updating the image tag to $IMAGE_NAME."
+  if grep -q '^DIALER_IMAGE=' .env; then
+    sed -i "s|^DIALER_IMAGE=.*|DIALER_IMAGE=$IMAGE_NAME|" .env
+  else
+    printf '\nDIALER_IMAGE=%s\n' "$IMAGE_NAME" >> .env
+  fi
+  if ! grep -q '^AUTO_REAUTH_ENABLED=' .env; then
+    printf 'AUTO_REAUTH_ENABLED=1\n' >> .env
+  fi
+  if ! grep -q '^AUTO_REAUTH_SAFE_WINDOW_START_HOUR=' .env; then
+    printf 'AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4\n' >> .env
+  fi
+  if ! grep -q '^AUTO_REAUTH_SAFE_WINDOW_END_HOUR=' .env; then
+    printf 'AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6\n' >> .env
+  fi
 else
   printf 'Campus network account: '
   IFS= read -r dialer_user
@@ -64,6 +78,7 @@ DIALER_USER=$dialer_user
 DIALER_PASSWORD=$dialer_password
 DIALER_IMAGE=$IMAGE_NAME
 DIALER_BACKEND=auto
+TZ=Asia/Shanghai
 
 DIALER_MAC_ADDRESS=
 DIALER_CLIENT_ID=
@@ -75,10 +90,16 @@ HEARTBEAT_INTERVAL_MAX_SECONDS=240
 PORTAL_DETECTION_THRESHOLD=12
 NETWORK_CHECK_INTERVAL_SECONDS=5
 PORTAL_AUTH_FRESH_SECONDS=900
+POST_LOGIN_PORTAL_GRACE_SECONDS=20
 PORTAL_REAUTH_COOLDOWN_SECONDS=300
+LOGIN_CONFIRMATION_ATTEMPTS=3
+LOGIN_CONFIRMATION_INTERVAL_SECONDS=2
 HEALTH_AUTH_MAX_AGE_SECONDS=900
 LOG_RETENTION_DAYS=3
 NETWORK_CHECK_URLS=http://www.gstatic.com/generate_204,http://connect.rom.miui.com/generate_204,http://www.msftconnecttest.com/connecttest.txt
+AUTO_REAUTH_ENABLED=1
+AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4
+AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 EOF
   chmod 600 .env 2>/dev/null || true
 fi

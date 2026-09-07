@@ -5,9 +5,10 @@ plugins {
 }
 
 group = "com.rsplwe.esurfing"
-version = "1.2.0"
+version = "1.3.0"
 
 repositories {
+    maven(url = "https://maven.aliyun.com/repository/public")
     mavenCentral()
     maven(url = "https://jitpack.io")
 }

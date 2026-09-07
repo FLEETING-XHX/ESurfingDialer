@@ -82,18 +82,20 @@ object DialerApp {
                                 HealthStatus.markNetworkCheckObserved()
                                 if (HealthStatus.authenticated) {
                                     val authAge = HealthStatus.secondsSinceLastAuthSuccess()
-                                    if (HealthStatus.isAuthFresh(RuntimeConfig.portalAuthFreshSeconds)) {
-                                        HealthStatus.consecutivePortalDetections.set(0)
-                                        logger.warn("PORTAL_DETECTED_IGNORED_AUTH_FRESH authAge=${authAge}s userIp=${States.userIp} acIp=${States.acIp}")
+                                    val count = HealthStatus.consecutivePortalDetections.incrementAndGet()
+                                    val heartbeatFailures = HealthStatus.consecutiveHeartbeatFailures.get()
+                                    if (authAge <= RuntimeConfig.postLoginPortalGraceSeconds && heartbeatFailures == 0) {
+                                        logger.warn("PORTAL_DETECTED_POST_LOGIN_GRACE count=$count authAge=${authAge}s userIp=${States.userIp} acIp=${States.acIp}")
                                     } else {
-                                        val count = HealthStatus.consecutivePortalDetections.incrementAndGet()
                                         HealthStatus.markError("portal detected while authenticated ($count), authAge=${authAge}s")
-                                        logger.warn("PORTAL_DETECTED_WHILE_AUTHENTICATED count=$count authAge=${authAge}s userIp=${States.userIp} acIp=${States.acIp}")
-                                        if (count >= RuntimeConfig.portalDetectionThreshold) {
+                                        logger.warn("PORTAL_DETECTED_WHILE_AUTHENTICATED count=$count authAge=${authAge}s heartbeatFailures=$heartbeatFailures userIp=${States.userIp} acIp=${States.acIp}")
+                                        val portalThresholdReached = count >= RuntimeConfig.portalDetectionThreshold
+                                        val heartbeatCorroborated = heartbeatFailures > 0
+                                        if (portalThresholdReached || heartbeatCorroborated) {
                                             val cooldownAge = HealthStatus.secondsSinceLastPortalReauthRequest()
                                             if (cooldownAge >= RuntimeConfig.portalReauthCooldownSeconds) {
                                                 HealthStatus.markPortalReauthRequested()
-                                                logger.warn("PORTAL_REAUTH_REQUESTED count=$count authAge=${authAge}s")
+                                                logger.warn("PORTAL_REAUTH_REQUESTED count=$count authAge=${authAge}s heartbeatFailures=$heartbeatFailures")
                                                 States.networkStatus = networkStatus.status
                                             } else {
                                                 logger.warn("PORTAL_REAUTH_SUPPRESSED_COOLDOWN count=$count cooldownAge=${cooldownAge}s")

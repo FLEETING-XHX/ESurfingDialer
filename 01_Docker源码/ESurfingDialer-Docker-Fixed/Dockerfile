@@ -8,7 +8,9 @@ FROM eclipse-temurin:17-jre-alpine
 
 RUN addgroup -S esurfing \
     && adduser -S esurfing -G esurfing \
-    && apk add --no-cache su-exec
+    && apk add --no-cache su-exec tzdata
+
+ENV TZ=Asia/Shanghai
 
 WORKDIR /app
 

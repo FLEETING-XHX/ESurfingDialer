@@ -1,6 +1,6 @@
 # ESurfingDialer Docker Fixed
 
-广东电信天翼校园认证客户端的 Docker 修复版，基于 `ESurfingDialer 1.2.0` 源码改造，重点解决容器长期运行后认证线程失效、设备身份变化、心跳异常后无法自动恢复的问题。
+广东电信天翼校园认证客户端的 Docker 修复版，基于 `ESurfingDialer 1.2.0` 源码改造，重点解决容器长期运行后认证线程失效、设备身份变化、心跳异常后无法自动恢复的问题。v1.3 新增了“认证有效期预测 + 安全窗口重认证”。
 
 ## 快速部署
 
@@ -15,6 +15,9 @@ cp .env.example .env
 ```dotenv
 DIALER_USER=你的账号
 DIALER_PASSWORD=你的密码
+AUTO_REAUTH_ENABLED=1
+AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4
+AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 ```
 
 3. 构建并启动：
@@ -50,6 +53,7 @@ docker run -d \
 
 - `device-state.json`：持久化 MAC 地址和 Client ID。删除该文件才会重新生成身份。
 - `health.json`：Docker HEALTHCHECK 使用的业务健康状态。
+- `reauth-plan.json`：自动重认证的历史样本、预测间隔和下一次计划时间。
 
 可查看：
 
@@ -69,11 +73,18 @@ DIALER_CLIENT_ID=
 LOGIN_RETRY_INITIAL_SECONDS=5
 LOGIN_RETRY_MAX_SECONDS=60
 HEARTBEAT_FAILURE_THRESHOLD=3
+LOGIN_CONFIRMATION_ATTEMPTS=3
+LOGIN_CONFIRMATION_INTERVAL_SECONDS=2
 NETWORK_CHECK_INTERVAL_SECONDS=5
 NETWORK_CHECK_URLS=http://www.gstatic.com/generate_204,http://connect.rom.miui.com/generate_204,http://www.msftconnecttest.com/connecttest.txt
+AUTO_REAUTH_ENABLED=1
+AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4
+AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 ```
 
 如学校认证系统要求使用真实 WAN MAC，可设置 `DIALER_MAC_ADDRESS`。否则首次启动会生成并保存一个稳定的本地身份。
+
+`AUTO_REAUTH_ENABLED` 设为 `1` 时启用“自动推算下次认证并在安全窗口重认证”，设为 `0` 时关闭，仍保留原来的心跳和掉线重登逻辑。
 
 ## 构建
 

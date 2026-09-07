@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
 import org.apache.commons.codec.digest.DigestUtils
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 fun createHttpClient(isAllowRedirect: Boolean = true): OkHttpClient {
@@ -21,6 +22,11 @@ fun createHttpClient(isAllowRedirect: Boolean = true): OkHttpClient {
 }
 
 val apiClient = createHttpClient()
+
+fun resetApiConnections() {
+    apiClient.dispatcher.cancelAll()
+    apiClient.connectionPool.evictAll()
+}
 
 fun post(url: String, data: String, extraHeaders: HashMap<String, String> = HashMap()): NetResult<ResponseBody> {
     val type = "application/x-www-form-urlencoded".toMediaTypeOrNull()
@@ -40,9 +46,22 @@ fun post(url: String, data: String, extraHeaders: HashMap<String, String> = Hash
     }
 
     return try {
-        val response = apiClient.newCall(request.build()).execute()
-        NetResult.Success(response.body!!)
+        val builtRequest = request.build()
+        val response = apiClient.newCall(builtRequest).execute()
+        if (!response.isSuccessful) {
+            val code = response.code
+            response.close()
+            NetResult.Error(IOException("HTTP $code from ${builtRequest.url.host}"))
+        } else {
+            val responseBody = response.body
+            if (responseBody == null) {
+                response.close()
+                NetResult.Error(IOException("empty response body from ${builtRequest.url.host}"))
+            } else {
+                NetResult.Success(responseBody)
+            }
+        }
     } catch (e: Throwable) {
-        NetResult.Error(e.stackTraceToString())
+        NetResult.Error(e)
     }
 }

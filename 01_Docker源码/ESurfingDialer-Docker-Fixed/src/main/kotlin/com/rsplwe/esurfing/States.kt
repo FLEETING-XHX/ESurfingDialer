@@ -10,12 +10,11 @@ object States {
     var clientId = ""
     var algoId = ""
     var macAddress = ""
-    var userIp = ""
-    var acIp = ""
+    @Volatile var userIp = ""
+    @Volatile var acIp = ""
     var ticket = ""
 
-    @get:Synchronized
-    var networkStatus: ConnectivityStatus = ConnectivityStatus.DEFAULT
+    @Volatile var networkStatus: ConnectivityStatus = ConnectivityStatus.DEFAULT
 
     @Volatile
     var isRunning = true

@@ -2,4 +2,4 @@ services:
   esurfing-dialer:
     build:
       context: .
-    image: "${DIALER_IMAGE:-esurfing-dialer:v1.22}"
+    image: "${DIALER_IMAGE:-esurfing-dialer:v1.3}"
