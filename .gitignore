@@ -17,6 +17,9 @@ Desktop.ini
 # Generated release outputs inside source projects
 **/dist/
 
+# Release installers are distributed as packages, not committed to Git
+00_最终安装包/**/*.exe
+
 # Local credentials / runtime output
 **/config.txt
 **/logs/
