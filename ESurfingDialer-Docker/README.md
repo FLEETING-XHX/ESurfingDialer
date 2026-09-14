@@ -1,15 +1,15 @@
-# ESurfingDialer Docker
+# ESurfingDialer Docker（天翼校园软路由版）
 
 面向 iStoreOS / OpenWrt 软路由的 ESurfingDialer Docker 离线部署版。
 
 本仓库基于原项目整理、修复和打包：
 
 - 原项目： [Itsuwarii/ESurfingDialer](https://github.com/Itsuwarii/ESurfingDialer)
-- 项目入口： [FLEETING-XHX/ESurfingDialer](https://github.com/FLEETING-XHX/ESurfingDialer)
+- 统一项目主页： [ESurfingDialer（天翼校园）](https://github.com/FLEETING-XHX/ESurfingDialer)
 
 ## 下载
 
-- 最新离线部署包： [Release v1.3](https://github.com/FLEETING-XHX/ESurfingDialer-Docker/releases/tag/v1.3)
+- 最新离线部署包：请前往统一仓库的 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 页面。
 
 ## 适用场景
 
