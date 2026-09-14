@@ -4,19 +4,34 @@
 
 如果你只知道“天翼校园”，也可以用“天翼校园认证”“校园网认证”“ESurfingDialer”等关键词搜索本项目。
 
-## 选择版本
+## 快速选择
+
+下面两栏可以直接切换浏览：
+
+<table>
+<tr>
+<td width="50%" valign="top">
 
 ### Windows 客户端
 
-适合直接安装在 Windows 电脑上：
+适合直接安装在 Windows 电脑上。
 
-- [下载 Windows 客户端 v1.01](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/client-v1.01/ESurfingDialer-Lite-v1.01-Setup.exe)
+[下载 Windows 客户端 v1.01](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/client-v1.01/ESurfingDialer-Lite-v1.01-Setup.exe)
+
+</td>
+<td width="50%" valign="top">
 
 ### Docker 软路由版
 
-适合部署在 iStoreOS / OpenWrt 软路由上：
+适合部署在 iStoreOS / OpenWrt 软路由上。
 
-- [下载 Docker v1.3 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v1.3/ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip)
+[下载 Docker v1.3 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v1.3/ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip)
+
+[查看 Docker 安装教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)
+
+</td>
+</tr>
+</table>
 
 Docker 版本提供离线镜像包，软路由没有公网时也可以完成部署。
 
