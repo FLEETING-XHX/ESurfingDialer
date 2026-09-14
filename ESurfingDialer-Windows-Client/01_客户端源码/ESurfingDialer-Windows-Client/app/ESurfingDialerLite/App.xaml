@@ -1,0 +1,10 @@
+<Application x:Class="ESurfingDialerLite.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="AccentBrush" Color="#2185FF"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#E5484D"/>
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#6F7785"/>
+    </Application.Resources>
+</Application>

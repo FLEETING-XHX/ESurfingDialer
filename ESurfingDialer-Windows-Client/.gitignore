@@ -1,0 +1,26 @@
+﻿# OS / editor
+Thumbs.db
+Desktop.ini
+.vs/
+.idea/
+*.user
+*.suo
+
+# .NET build outputs
+**/bin/
+**/obj/
+
+# Gradle / JVM build outputs
+**/.gradle/
+**/build/
+
+# Generated release outputs inside source projects
+**/dist/
+
+# Release installers are distributed as packages, not committed to Git
+00_最终安装包/**/*.exe
+
+# Local credentials / runtime output
+**/config.txt
+**/logs/
+**/target/
