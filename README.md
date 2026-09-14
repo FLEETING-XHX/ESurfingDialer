@@ -1,43 +1,43 @@
-# ESurfingDialer Docker
+# ESurfingDialer（天翼校园）
 
-面向 iStoreOS / OpenWrt 软路由的 ESurfingDialer Docker 离线部署版。
+**ESurfingDialer / Tianyi Campus** 是一个校园网认证工具，提供 Windows 客户端和 Docker 软路由两个版本。
 
-本仓库基于原项目整理、修复和打包：
+如果你只知道“天翼校园”，也可以用“天翼校园认证”“校园网认证”“ESurfingDialer”等关键词搜索本项目。
 
-- 原项目： [Itsuwarii/ESurfingDialer](https://github.com/Itsuwarii/ESurfingDialer)
-- 项目入口： [FLEETING-XHX/ESurfingDialer](https://github.com/FLEETING-XHX/ESurfingDialer)
+## 选择版本
 
-## 下载
+### Windows 客户端
 
-- 最新离线部署包： [Release v1.3](https://github.com/FLEETING-XHX/ESurfingDialer-Docker/releases/tag/v1.3)
+适合直接安装在 Windows 电脑上：
 
-## 适用场景
+- [客户端源码](ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client)
+- [客户端安装包](ESurfingDialer-Windows-Client/00_最终安装包)
 
-- iStoreOS / OpenWrt x86_64 软路由
-- 校园网认证前无法访问公网的环境
-- 不方便安装 Gradle、JDK、代理或手动构建 Docker 镜像的用户
+### Docker 软路由版
 
-## 主要改动
+适合部署在 iStoreOS / OpenWrt 软路由上：
 
-- 提供真正离线部署包，支持 `docker load` 导入镜像后启动。
-- 拆分普通部署和源码构建配置，默认部署不触发在线构建。
-- 修复 x86_64 环境默认启用 Dynarmic 导致容器不健康的问题。
-- 提供 `install.sh` 一键安装脚本。
-- 增加运行日志保存和三天日志轮转。
-- 改进健康检查和部署文档。
+- [Docker 源码](ESurfingDialer-Docker/01_Docker源码)
+- [Docker 离线部署包](ESurfingDialer-Docker/00_最终部署包)
+- [Docker 使用教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)
 
-## 快速使用
+Docker 版本提供离线镜像包，软路由没有公网时也可以完成部署。
 
-下载 Release 中的离线包，上传到软路由后解压：
+## 版本说明
 
-```sh
-unzip ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip
-cd ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3
-sh install.sh
-```
+- Windows 客户端和 Docker 版本分别维护，互不影响。
+- 两个版本使用独立目录，但共用同一个 GitHub 仓库。
+- 发布版本会在 Release 页面中分别标明客户端或 Docker。
 
-安装脚本会检测架构、导入本地镜像、生成 `.env`、创建数据目录并启动容器。
+## 发布下载
+
+发布包请前往 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 下载。
+
+建议按下面的名称区分版本：
+
+- `client-v1.01`：Windows 客户端
+- `docker-v1.3`：Docker 软路由版
 
 ## 致谢
 
-核心认证逻辑来源于 [Itsuwarii/ESurfingDialer](https://github.com/Itsuwarii/ESurfingDialer)。本仓库主要维护 Docker 离线部署、软路由适配、启动脚本、健康检查和发布包。
+核心认证逻辑来源于 [Itsuwarii/ESurfingDialer](https://github.com/Itsuwarii/ESurfingDialer)。

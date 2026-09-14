@@ -1,19 +1,22 @@
-# Release artifacts are uploaded to GitHub Releases, not committed to Git.
+# Combined repository ignores
+**/data/
+**/logs/
+**/.gradle/
+**/build/
+**/dist/
+**/.env
+!**/.env.example
+
+# Release packages are uploaded to GitHub Releases
 *.zip
 *.tar
 *.tar.gz
-00_最终部署包/ESurfingDialer-Itsuwarii-Docker-Fixed-v*/
+**/*.exe
 
-# Local planning notes
-GitHub发布方案.md
-ESurfingDialer-Docker离线部署改造计划.md
-
-# Runtime state
-**/data/
-**/logs/
-
-# Build caches
-**/.gradle/
-**/build/
-!**/build/libs/
-!**/build/libs/*-all.jar
+# OS and editor files
+Thumbs.db
+Desktop.ini
+.vs/
+.idea/
+*.user
+*.suo

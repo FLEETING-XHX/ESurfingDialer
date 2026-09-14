@@ -1,0 +1,19 @@
+# Release artifacts are uploaded to GitHub Releases, not committed to Git.
+*.zip
+*.tar
+*.tar.gz
+00_最终部署包/ESurfingDialer-Itsuwarii-Docker-Fixed-v*/
+
+# Local planning notes
+GitHub发布方案.md
+ESurfingDialer-Docker离线部署改造计划.md
+
+# Runtime state
+**/data/
+**/logs/
+
+# Build caches
+**/.gradle/
+**/build/
+!**/build/libs/
+!**/build/libs/*-all.jar
