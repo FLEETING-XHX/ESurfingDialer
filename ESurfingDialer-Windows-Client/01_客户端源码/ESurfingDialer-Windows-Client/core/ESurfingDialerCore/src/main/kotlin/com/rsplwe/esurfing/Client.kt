@@ -5,6 +5,8 @@ import com.rsplwe.esurfing.States.ticket
 import com.rsplwe.esurfing.hook.Session
 import com.rsplwe.esurfing.network.NetResult
 import com.rsplwe.esurfing.network.post
+import com.rsplwe.esurfing.network.resetApiConnections
+import com.rsplwe.esurfing.utils.checkConnectivity
 import com.rsplwe.esurfing.utils.ConnectivityStatus.DEFAULT
 import com.rsplwe.esurfing.utils.ConnectivityStatus.IS_REDIRECTS_FOUND_IP
 import com.rsplwe.esurfing.utils.ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP
@@ -55,6 +57,12 @@ class Client(private val options: Options) : Runnable {
     }
 
     private fun runClientIteration() {
+        if (session != null && HealthStatus.authenticated
+            && !States.forceAuthorization && States.networkStatus != IS_REDIRECTS_FOUND_IP) {
+            maybeHeartbeat()
+            sleep(500)
+            return
+        }
         when {
             States.networkStatus == DEFAULT -> {
                 sleep(1000)
@@ -89,6 +97,7 @@ class Client(private val options: Options) : Runnable {
         try {
             heartbeat(ticket)
             HealthStatus.markHeartbeatSuccess()
+            abnormalRecoveries = 0
             logger.info("HEARTBEAT_SUCCESS nextRetry=${keepRetrySeconds}s")
         } catch (e: Exception) {
             val failures = HealthStatus.consecutiveHeartbeatFailures.incrementAndGet()
@@ -108,6 +117,9 @@ class Client(private val options: Options) : Runnable {
     }
 
     private fun authorization() {
+        if (session != null && HealthStatus.authenticated) {
+            try { term() } catch (e: Exception) { logger.warn("SESSION_TERMINATE_RECOVERY_FAILED", e) }
+        }
         resetSessionState("starting authorization", countAbnormalRecovery = false)
         States.algoId = "00000000-0000-0000-0000-000000000000"
 
@@ -133,9 +145,18 @@ class Client(private val options: Options) : Runnable {
             return
         }
 
+        if (!confirmAuthentication()) {
+            HealthStatus.markError("login response was not confirmed by keep heartbeat")
+            logger.warn("LOGIN_NOT_CONFIRMED")
+            resetSessionState("login not confirmed", countAbnormalRecovery = true)
+            States.networkStatus = DEFAULT
+            sleep(nextLoginRetrySeconds() * 1000)
+            return
+        }
         States.forceAuthorization = false
         States.networkStatus = SUCCESS
         loginFailures = 0
+        abnormalRecoveries = 0
         tick = System.currentTimeMillis()
         HealthStatus.markLoginSuccess()
         logger.info("LOGIN_SUCCESS")
@@ -259,11 +280,32 @@ class Client(private val options: Options) : Runnable {
             </request>
         """.trimIndent()
         when (val result = post(termUrl, session!!.encrypt(payload))) {
-            is NetResult.Success -> {}
+            is NetResult.Success -> result.data.close()
             is NetResult.Error -> {
                 logger.warn("SESSION_TERMINATE_FAILED ${result.exception}")
             }
         }
+    }
+
+    private fun confirmAuthentication(): Boolean {
+        repeat(RuntimeConfig.loginConfirmationAttempts) { attempt ->
+            sleep(RuntimeConfig.loginConfirmationIntervalSeconds * 1000)
+            try {
+                heartbeat(ticket)
+                logger.info("LOGIN_CONFIRMED attempt=${attempt + 1}")
+                return true
+            } catch (e: InterruptedException) {
+                throw e
+            } catch (e: Exception) {
+                val probe = checkConnectivity()
+                if (probe.status == IS_REDIRECTS_FOUND_IP) {
+                    States.userIp = probe.userIp.orEmpty()
+                    States.acIp = probe.acIp.orEmpty()
+                }
+                logger.warn("LOGIN_CONFIRMATION_FAILED attempt=${attempt + 1} status=${probe.status}", e)
+            }
+        }
+        return false
     }
 
     private fun resetSessionState(reason: String, countAbnormalRecovery: Boolean) {
@@ -279,11 +321,12 @@ class Client(private val options: Options) : Runnable {
         keepRetrySeconds = RuntimeConfig.loginRetryInitialSeconds
         ticket = ""
         HealthStatus.resetSession()
+        resetApiConnections()
 
         if (countAbnormalRecovery) {
             abnormalRecoveries++
             if (abnormalRecoveries >= RuntimeConfig.maxAbnormalRecoveriesBeforeExit) {
-                logger.error("Too many abnormal recoveries ($abnormalRecoveries), exiting so Docker can restart the container")
+                logger.error("Too many abnormal recoveries ($abnormalRecoveries), exiting for the Windows supervisor")
                 HealthStatus.write()
                 exitProcess(1)
             }
@@ -294,8 +337,8 @@ class Client(private val options: Options) : Runnable {
         return value
             ?.trim()
             ?.toLongOrNull()
-            ?.coerceIn(5, 600)
-            ?: fallback.coerceIn(5, 600)
+            ?.coerceIn(5, RuntimeConfig.heartbeatIntervalMaxSeconds)
+            ?: fallback.coerceIn(5, RuntimeConfig.heartbeatIntervalMaxSeconds)
     }
 
     private fun nextLoginRetrySeconds(): Long {

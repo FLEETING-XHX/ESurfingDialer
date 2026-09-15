@@ -3,6 +3,7 @@ obj/
 .vs/
 .idea/
 dist/
+artifacts/
 *.user
 *.suo
 core/ESurfingDialerCore/build/

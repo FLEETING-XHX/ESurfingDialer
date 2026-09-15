@@ -24,8 +24,10 @@ data class NetworkConnectivityResult(
     val message: String = "ok"
 )
 
+private val probeClient = createHttpClient(false)
+
 fun checkConnectivity(): NetworkConnectivityResult {
-    val client = createHttpClient(false)
+    val client = probeClient
     val errors = mutableListOf<String>()
 
     for (url in RuntimeConfig.networkCheckUrls) {
@@ -37,11 +39,10 @@ fun checkConnectivity(): NetworkConnectivityResult {
             .build()
 
         try {
-            val response = client.newCall(request).execute()
-            val location = response.headers["Location"]
-            val responseCode = response.code
-            val body = if (responseCode == 200) response.body?.string().orEmpty() else ""
-            response.close()
+            val (responseCode, location, body) = client.newCall(request).execute().use { response ->
+                Triple(response.code, response.headers["Location"],
+                    if (response.code == 200) response.body?.string().orEmpty() else "")
+            }
 
             when (responseCode) {
                 301, 302, 303, 307, 308 -> {

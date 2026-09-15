@@ -5,118 +5,136 @@ namespace ESurfingDialerLite;
 
 public sealed class DialerCoreProcess
 {
+    private readonly object _gate = new();
     private Process? _process;
-    private ClientConfig? _lastConfig;
-    private string _lastPassword = "";
-    private Action<string>? _log;
-    private bool _stopRequested;
-
-    public bool IsRunning => _process is { HasExited: false };
+    private int _generation;
+    private bool _requested;
+    private bool _enhanced = true;
+    private int _crashStreak;
+    private DateTimeOffset _startedAt;
+    public event Action<string>? RecoveryMessage;
+    public bool EnhancedConnection { get { lock (_gate) return _enhanced; } set { lock (_gate) _enhanced = value; } }
+    public bool IsRequested { get { lock (_gate) return _requested; } }
+    public bool IsRunning { get { lock (_gate) return _process is { HasExited: false }; } }
+    public DateTimeOffset StartedAt { get { lock (_gate) return _startedAt; } }
 
     public Task StartAsync(ClientConfig config, string password, Action<string> log)
     {
-        if (_process is { HasExited: false })
+        lock (_gate)
         {
-            log("认证核心已经在运行。");
-            return Task.CompletedTask;
+            if (_requested) return Task.CompletedTask;
+            if (_process is { HasExited: false }) throw new InvalidOperationException("旧认证核心尚未退出，请稍后再试。");
+            if (string.IsNullOrWhiteSpace(config.UserName) || string.IsNullOrEmpty(password))
+                throw new InvalidOperationException("请先填写账号和密码。");
+            if (!File.Exists(AppPaths.CoreJar))
+                throw new FileNotFoundException("未找到认证核心 core/client.jar，请使用完整客户端包。");
+            _requested = true;
+            _crashStreak = 0;
+            var generation = ++_generation;
+            try { StartProcess(config.UserName, password, generation, log); }
+            catch { _requested = false; throw; }
         }
-
-        if (string.IsNullOrWhiteSpace(config.UserName) || string.IsNullOrWhiteSpace(password))
-        {
-            throw new InvalidOperationException("请先填写账号和密码。");
-        }
-
-        if (!File.Exists(AppPaths.CoreJar))
-        {
-            log("尚未找到认证核心 core/client.jar。当前先完成客户端壳开发，后续构建脚本会复制它。");
-            return Task.CompletedTask;
-        }
-
-        _lastConfig = config;
-        _lastPassword = password;
-        _log = log;
-        _stopRequested = false;
-
-        StartProcess(config, password, log);
         return Task.CompletedTask;
     }
 
-    private void StartProcess(ClientConfig config, string password, Action<string> log)
+    private void StartProcess(string user, string password, int generation, Action<string> log)
     {
         Directory.CreateDirectory(AppPaths.LogsDirectory);
         Directory.CreateDirectory(AppPaths.DataDirectory);
-
-        var startInfo = new ProcessStartInfo
+        // Old health files must never authenticate a newly started process.
+        if (File.Exists(AppPaths.HealthFile)) File.Delete(AppPaths.HealthFile);
+        var info = new ProcessStartInfo
         {
-            FileName = JavaLocator.FindJavaExe(),
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
+            FileName = JavaLocator.FindJavaExe(), UseShellExecute = false,
+            RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, CreateNoWindow = true,
+            WorkingDirectory = AppContext.BaseDirectory
         };
-        startInfo.ArgumentList.Add("-jar");
-        startInfo.ArgumentList.Add(AppPaths.CoreJar);
-        startInfo.ArgumentList.Add("-u");
-        startInfo.ArgumentList.Add(config.UserName);
-        startInfo.ArgumentList.Add("-p");
-        startInfo.ArgumentList.Add(password);
-        startInfo.ArgumentList.Add("-d");
-
-        startInfo.Environment["STATE_DIR"] = AppPaths.DataDirectory;
-
-        _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        _process.OutputDataReceived += (_, e) => HandleCoreLine(e.Data, log);
-        _process.ErrorDataReceived += (_, e) => HandleCoreLine(e.Data, log);
-        _process.Exited += (_, _) => HandleExit();
-        _process.Start();
-        _process.BeginOutputReadLine();
-        _process.BeginErrorReadLine();
-        log("认证核心已启动。");
+        foreach (var arg in new[] { "-jar", AppPaths.CoreJar, "-u", user, "-p", password, "-d", "--control-stdin" })
+            info.ArgumentList.Add(arg);
+        info.Environment["STATE_DIR"] = AppPaths.DataDirectory;
+        info.Environment["AUTO_REAUTH_ENABLED"] = "0";
+        var process = new Process { StartInfo = info, EnableRaisingEvents = true };
+        process.OutputDataReceived += (_, e) => { if (e.Data != null) ClientLog.Write(AppPaths.CoreLogFile, e.Data); };
+        process.ErrorDataReceived += (_, e) => { if (e.Data != null) ClientLog.Write(AppPaths.CoreLogFile, e.Data); };
+        process.Exited += (_, _) => _ = HandleExitAsync(process, generation, user, password, log);
+        _process = process;
+        _startedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            log("认证核心已启动。");
+        }
+        catch
+        {
+            _process = null;
+            // Output setup can fail after Start succeeds; do not leave an orphan core.
+            try { if (!process.HasExited) { process.Kill(entireProcessTree: true); process.WaitForExit(2000); } }
+            catch (InvalidOperationException) { }
+            finally { process.Dispose(); }
+            throw;
+        }
     }
 
     public void Stop()
     {
-        _stopRequested = true;
-        if (_process is not { HasExited: false }) return;
-        try
+        lock (_gate)
         {
-            _process.Kill(entireProcessTree: true);
-            _process.Dispose();
+            _requested = false;
+            ++_generation;
+            var process = _process;
+            if (process == null) return;
+            try
+            {
+                if (!process.HasExited)
+                {
+                    try { process.StandardInput.WriteLine("stop"); process.StandardInput.Flush(); } catch (IOException) { }
+                    if (!process.WaitForExit(4000)) process.Kill(entireProcessTree: true);
+                    if (!process.WaitForExit(2000))
+                        throw new InvalidOperationException("认证核心仍在退出，请稍后再试。");
+                }
+                _process = null;
+                process.Dispose();
+            }
+            catch (InvalidOperationException) when (process.HasExited) { _process = null; process.Dispose(); }
         }
-        catch
+    }
+
+    private async Task HandleExitAsync(Process exited, int generation, string user, string password, Action<string> log)
+    {
+        await Task.Yield();
+        lock (_gate)
         {
-            // Best-effort stop; the UI can keep running.
-        }
-        finally
-        {
+            if (_generation != generation || _process != exited) return;
+            if (DateTimeOffset.UtcNow - _startedAt > TimeSpan.FromMinutes(2)) _crashStreak = 0;
+            _crashStreak++;
             _process = null;
+            exited.Dispose();
+            log("认证核心已退出。");
+            if (!_requested || !_enhanced) { _requested = false; return; }
+            if (_crashStreak > 5) {
+                _requested = false;
+                RecoveryMessage?.Invoke("认证核心连续退出，请查看详细日志后手动连接。");
+                return;
+            }
         }
-    }
-
-    private void HandleCoreLine(string? data, Action<string> log)
-    {
-        if (string.IsNullOrWhiteSpace(data)) return;
-        var line = $"[{DateTime.Now:HH:mm:ss}] {data}";
-        File.AppendAllText(AppPaths.CoreLogFile, line + Environment.NewLine);
-        log(data);
-    }
-
-    private async void HandleExit()
-    {
-        _log?.Invoke("认证核心已退出。");
-        if (_stopRequested || _lastConfig == null || string.IsNullOrWhiteSpace(_lastPassword)) return;
-
-        _log?.Invoke("5 秒后自动重启认证核心。");
-        await Task.Delay(TimeSpan.FromSeconds(5));
-        if (_stopRequested) return;
-
-        try
+        for (var attempt = 1; attempt <= 5; attempt++)
         {
-            StartProcess(_lastConfig, _lastPassword, _log ?? (_ => { }));
+            var delay = Math.Min(60, 5 * (1 << Math.Min(4, attempt + _crashStreak - 2)));
+            RecoveryMessage?.Invoke($"{delay} 秒后尝试重新启动认证核心。");
+            log($"{delay} 秒后自动重启认证核心。");
+            await Task.Delay(TimeSpan.FromSeconds(delay));
+            lock (_gate)
+            {
+                // A stopped/switched account invalidates every pending restart.
+                if (_generation != generation) return;
+                if (!_requested || !_enhanced) { _requested = false; return; }
+                try { StartProcess(user, password, generation, log); return; }
+                catch (Exception ex) { log("自动重启失败：" + ex.Message); }
+            }
         }
-        catch (Exception ex)
-        {
-            _log?.Invoke("自动重启失败: " + ex.Message);
-        }
+        lock (_gate) { if (_generation == generation) _requested = false; }
+        RecoveryMessage?.Invoke("多次启动失败，请查看详细日志后手动连接。");
     }
 }

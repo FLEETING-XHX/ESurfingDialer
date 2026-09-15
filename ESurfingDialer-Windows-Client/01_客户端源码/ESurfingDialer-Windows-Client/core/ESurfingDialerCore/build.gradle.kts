@@ -8,6 +8,7 @@ group = "com.rsplwe.esurfing"
 version = "1.4.0"
 
 repositories {
+    maven(url = "https://maven.aliyun.com/repository/public")
     mavenCentral()
     maven(url = "https://jitpack.io")
 }
@@ -31,4 +32,12 @@ kotlin {
 
 application {
     mainClass.set("com.rsplwe.esurfing.DialerApp")
+}
+
+tasks.register<JavaExec>("recoveryRegression") {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rsplwe.esurfing.RecoveryRegressionKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+    environment("STATE_DIR", layout.buildDirectory.dir("regression-state").get().asFile.absolutePath)
 }

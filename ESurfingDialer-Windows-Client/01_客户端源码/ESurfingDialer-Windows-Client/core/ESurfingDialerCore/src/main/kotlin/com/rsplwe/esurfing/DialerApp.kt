@@ -34,6 +34,7 @@ object DialerApp {
         options.addOption(loginUser)
         options.addOption(loginPassword)
         options.addOption(useDynarmicBackend)
+        options.addOption(Option.builder().longOpt("control-stdin").desc("Allow the Windows supervisor to request a clean shutdown").build())
 
         val cmd: CommandLine
         val parser: CommandLineParser = DefaultParser()
@@ -61,30 +62,50 @@ object DialerApp {
                 while (isRunning) {
                     try {
                         val networkStatus = checkConnectivity()
-                        States.networkStatus = networkStatus.status
 
                         when (networkStatus.status) {
                             ConnectivityStatus.SUCCESS -> {
                                 HealthStatus.markNetworkCheckSuccess()
+                                States.networkStatus = networkStatus.status
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP -> {
                                 HealthStatus.markError("No parameter detected in url")
                                 logger.error("No parameter detected in url.")
+                                if (!HealthStatus.authenticated) States.networkStatus = networkStatus.status
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
-                                HealthStatus.markNetworkCheckSuccess()
                                 States.userIp = networkStatus.userIp!!
                                 States.acIp = networkStatus.acIp!!
+                                val now = System.currentTimeMillis() / 1000
+                                HealthStatus.lastNetworkCheckAt = now
+                                if (!HealthStatus.authenticated) {
+                                    States.networkStatus = networkStatus.status
+                                } else {
+                                    val count = HealthStatus.consecutivePortalDetections.incrementAndGet()
+                                    if (RecoveryPolicy.shouldReauthenticate(count,
+                                            HealthStatus.consecutiveHeartbeatFailures.get(),
+                                            now - HealthStatus.lastLoginSuccessAt,
+                                            now - HealthStatus.lastPortalReauthAt)) {
+                                        HealthStatus.lastPortalReauthAt = now
+                                        States.networkStatus = networkStatus.status
+                                        logger.warn("PORTAL_REAUTH_REQUESTED count=$count")
+                                    } else {
+                                        logger.info("PORTAL_REAUTH_DEBOUNCED count=$count")
+                                    }
+                                }
                             }
 
                             ConnectivityStatus.REQUEST_ERROR -> {
                                 HealthStatus.markError(networkStatus.message)
                                 logger.error("Request Error: ${networkStatus.message}")
+                                if (!HealthStatus.authenticated) States.networkStatus = networkStatus.status
                             }
 
-                            ConnectivityStatus.DEFAULT -> {}
+                            ConnectivityStatus.DEFAULT -> {
+                                if (!HealthStatus.authenticated) States.networkStatus = networkStatus.status
+                            }
                         }
                         sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
                     } catch (e: InterruptedException) {
@@ -138,6 +159,14 @@ object DialerApp {
 
         clientThread.start()
         networkCheck.start()
+        if (cmd.hasOption("control-stdin")) {
+            kotlin.concurrent.thread(name = "windows-control", isDaemon = true) {
+                while (true) {
+                    val command = readlnOrNull() ?: return@thread
+                    if (command == "stop") exitProcess(0)
+                }
+            }
+        }
     }
 
 }

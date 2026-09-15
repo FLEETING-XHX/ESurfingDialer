@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>ESurfingDialer connecting</title>
+  <rect width="256" height="256" rx="48" fill="#303338"/>
+  <path d="M48 62 106 48v160l-58-14Z" fill="#FF7658"/>
+  <path d="M48 62 106 48v160l-58-14Z" fill="none" stroke="#FFFDF9" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M106 48v160M146 166h22M146 128h38M146 90h54" fill="none" stroke="#FFFDF9" stroke-width="18" stroke-linecap="round"/>
+  <path d="M146 166h22M146 128h38M146 90h54" fill="none" stroke="#FFB51B" stroke-width="12" stroke-linecap="round"/>
+</svg>

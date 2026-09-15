@@ -11,6 +11,14 @@
     <AssemblyVersion>1.0.1.0</AssemblyVersion>
     <FileVersion>1.0.1.0</FileVersion>
     <Product>ESurfingDialer Lite</Product>
+    <ApplicationIcon>..\..\resources\icons\ESurfingDialer-default.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\resources\icons\*.ico" Link="resources\icons\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\core\ESurfingDialerCore\build\libs\*-all.jar"
+             Condition="Exists('..\..\core\ESurfingDialerCore\build\libs')"
+             Link="core\client.jar" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

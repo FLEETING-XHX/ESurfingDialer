@@ -22,6 +22,11 @@ fun createHttpClient(isAllowRedirect: Boolean = true): OkHttpClient {
 
 val apiClient = createHttpClient()
 
+fun resetApiConnections() {
+    apiClient.dispatcher.cancelAll()
+    apiClient.connectionPool.evictAll()
+}
+
 fun post(url: String, data: String, extraHeaders: HashMap<String, String> = HashMap()): NetResult<ResponseBody> {
     val type = "application/x-www-form-urlencoded".toMediaTypeOrNull()
     val body = data.toRequestBody(type)
@@ -41,7 +46,14 @@ fun post(url: String, data: String, extraHeaders: HashMap<String, String> = Hash
 
     return try {
         val response = apiClient.newCall(request.build()).execute()
-        NetResult.Success(response.body!!)
+        val responseBody = response.body
+        if (!response.isSuccessful || responseBody == null) {
+            val code = response.code
+            response.close()
+            NetResult.Error("HTTP $code or empty response body")
+        } else {
+            NetResult.Success(responseBody)
+        }
     } catch (e: Throwable) {
         NetResult.Error(e.stackTraceToString())
     }

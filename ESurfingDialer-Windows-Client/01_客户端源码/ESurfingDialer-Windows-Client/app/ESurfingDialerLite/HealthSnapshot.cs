@@ -36,6 +36,13 @@ public sealed class HealthSnapshot
     [JsonPropertyName("lastError")]
     public string? LastError { get; set; }
 
+    public bool IsCurrentFor(DateTimeOffset startedAt, DateTimeOffset now) =>
+        ProcessAlive && LastUpdatedAt >= startedAt.ToUnixTimeSeconds()
+        && now.ToUnixTimeSeconds() - LastUpdatedAt is >= 0 and <= 60;
+
+    public bool HasRecentAuthentication(DateTimeOffset now) =>
+        now.ToUnixTimeSeconds() - Math.Max(LastLoginSuccessAt, LastHeartbeatSuccessAt) is >= 0 and <= 600;
+
     public static HealthSnapshot? Load()
     {
         if (!File.Exists(AppPaths.HealthFile)) return null;

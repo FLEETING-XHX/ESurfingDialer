@@ -1,0 +1,77 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:ESurfingDialerLite">
+<ResourceDictionary.MergedDictionaries><ResourceDictionary Source="PenIcons.xaml"/></ResourceDictionary.MergedDictionaries>
+<SolidColorBrush x:Key="Surface" Color="#F6F5FA"/><SolidColorBrush x:Key="Ink" Color="#292C31"/><SolidColorBrush x:Key="Muted" Color="#858A92"/>
+<SolidColorBrush x:Key="Coral" Color="#EF806F"/><SolidColorBrush x:Key="Green" Color="#43B856"/><SolidColorBrush x:Key="Offline" Color="#AEB3BA"/>
+<SolidColorBrush x:Key="SoftGreen" Color="#EEF8EF"/><SolidColorBrush x:Key="SoftCoral" Color="#FFF0ED"/>
+<BooleanToVisibilityConverter x:Key="BoolVisibility"/>
+<local:TextLineHeightConverter x:Key="TextLineHeight"/>
+<Geometry x:Key="HouseIcon">M3,10 L12,3 L21,10 V21 H15 V14 H9 V21 H3 Z</Geometry>
+<Geometry x:Key="LogIcon">M8,3 H20 V17 M20,17 H10 V20 C10,23 22,23 22,20 V17 M8,3 C3,3 3,7 3,7 H8 V20 C8,22 10,22 10,22 M11,8 H17 M11,12 H17</Geometry>
+<Geometry x:Key="SettingsIcon">M9,3 L15,3 L16,6 L19,7 L22,11 L20,14 L20,17 L15,21 L12,20 L9,21 L4,18 L4,14 L2,11 L5,7 L8,6 Z M16,12 A4,4 0 1 1 8,12 A4,4 0 1 1 16,12</Geometry>
+<Geometry x:Key="UserIcon">M18,8 A6,6 0 1 1 6,8 A6,6 0 1 1 18,8 M3,23 C3,13 21,13 21,23</Geometry>
+<Geometry x:Key="AccountIcon">M2,9 H7 L10,4 H14 L17,9 H22 V20 H2 Z M7,13 H17</Geometry>
+<Geometry x:Key="ShieldIcon">M12,2 L21,6 V13 C21,18 16,21 12,23 C8,21 3,18 3,13 V6 Z M7,12 L10,15 L17,8</Geometry>
+<Geometry x:Key="CampusIcon">M3,4 L12,2 V22 L3,20 Z M16,18 H18 M16,12 H21 M16,6 H24</Geometry>
+<Geometry x:Key="PencilIcon">M15,5 L19,1 L23,5 L8,20 L2,22 L4,16 Z M14,6 L18,10</Geometry>
+<Geometry x:Key="TrashIcon">M3,6 H21 M9,6 V3 H15 V6 M5,6 L6,22 H18 L19,6 M10,10 V18 M14,10 V18</Geometry>
+<Geometry x:Key="PlusIcon">M12,3 V21 M3,12 H21</Geometry>
+<Geometry x:Key="ChevronIcon">M8,4 L16,12 L8,20</Geometry>
+<Geometry x:Key="DownIcon">M4,8 L12,16 L20,8</Geometry>
+<Geometry x:Key="CloseIcon">M4,4 L20,20 M20,4 L4,20</Geometry>
+<Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="13"/><Setter Property="LineStackingStrategy" Value="BlockLineHeight"/><Setter Property="LineHeight" Value="{Binding FontSize, RelativeSource={RelativeSource Self}, Converter={StaticResource TextLineHeight}}"/></Style>
+<Style x:Key="Caption" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="FontSize" Value="11"/></Style>
+<!-- Card values use native font metrics so bold CJK glyphs are not clipped. -->
+<Style x:Key="CardValueText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+ <Setter Property="LineHeight" Value="Auto"/><Setter Property="LineStackingStrategy" Value="MaxHeight"/>
+ <Setter Property="Padding" Value="0,2,0,3"/>
+</Style>
+<Style x:Key="Icon" TargetType="Path">
+ <Setter Property="Width" Value="21"/><Setter Property="Height" Value="21"/><Setter Property="Stretch" Value="Uniform"/><Setter Property="StrokeThickness" Value="1.8"/>
+ <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/><Setter Property="StrokeLineJoin" Value="Round"/><Setter Property="StrokeStartLineCap" Value="Round"/><Setter Property="StrokeEndLineCap" Value="Round"/>
+</Style>
+<Style x:Key="PenIcon" TargetType="ContentControl">
+ <Setter Property="Width" Value="21"/><Setter Property="Height" Value="21"/>
+ <Setter Property="Focusable" Value="False"/><Setter Property="IsHitTestVisible" Value="False"/>
+ <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+ <Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/>
+ <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContentControl">
+  <Viewbox Stretch="Uniform"><Canvas Width="14" Height="14"><Path Data="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Fill="{TemplateBinding Foreground}"/></Canvas></Viewbox>
+ </ControlTemplate></Setter.Value></Setter>
+</Style>
+<Style x:Key="Card" TargetType="Border"><Setter Property="Background" Value="White"/><Setter Property="CornerRadius" Value="16"/><Setter Property="BorderBrush" Value="#EBECF0"/><Setter Property="BorderThickness" Value="1"/></Style>
+<Style TargetType="Button">
+ <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/>
+ <Setter Property="Padding" Value="12,8"/><Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+ <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+  <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="16">
+   <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+  </Border>
+  <ControlTemplate.Triggers>
+   <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.78"/></Trigger>
+   <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.55"/></Trigger>
+   <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonSurface" Property="BorderBrush" Value="{StaticResource Coral}"/></Trigger>
+   <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.4"/></Trigger>
+  </ControlTemplate.Triggers>
+ </ControlTemplate></Setter.Value></Setter>
+</Style>
+<Style x:Key="CardButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="White"/><Setter Property="Padding" Value="15"/><Setter Property="BorderBrush" Value="#EBECF0"/></Style>
+<Style x:Key="NavigationButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+ <Setter Property="Padding" Value="0"/><Setter Property="FontWeight" Value="Medium"/>
+ <Style.Triggers><Trigger Property="Foreground" Value="{StaticResource Coral}"><Setter Property="FontWeight" Value="Bold"/></Trigger></Style.Triggers>
+</Style>
+<Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="{StaticResource Coral}"/><Setter Property="Foreground" Value="White"/><Setter Property="HorizontalContentAlignment" Value="Center"/></Style>
+<Style x:Key="Switch" TargetType="CheckBox">
+ <Setter Property="Width" Value="46"/><Setter Property="Height" Value="32"/><Setter Property="Cursor" Value="Hand"/>
+ <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
+  <Grid Background="Transparent"><Border x:Name="Track" Height="25" CornerRadius="13" Background="{StaticResource Offline}" BorderThickness="1" BorderBrush="Transparent"><Ellipse x:Name="Knob" Width="19" Height="19" Margin="3,0" HorizontalAlignment="Left" Fill="White"/></Border></Grid>
+  <ControlTemplate.Triggers>
+   <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{StaticResource Green}"/><Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/></Trigger>
+   <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource Ink}"/></Trigger>
+   <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Track" Property="Opacity" Value="0.8"/></Trigger>
+   <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Track" Property="Opacity" Value="0.4"/></Trigger>
+  </ControlTemplate.Triggers>
+ </ControlTemplate></Setter.Value></Setter>
+</Style>
+<Style TargetType="TextBox"><Setter Property="Padding" Value="10,8"/><Setter Property="BorderBrush" Value="#DDE0E5"/><Setter Property="BorderThickness" Value="1"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style>
+<Style TargetType="PasswordBox"><Setter Property="Padding" Value="10,8"/><Setter Property="BorderBrush" Value="#DDE0E5"/><Setter Property="BorderThickness" Value="1"/></Style>
+</ResourceDictionary>

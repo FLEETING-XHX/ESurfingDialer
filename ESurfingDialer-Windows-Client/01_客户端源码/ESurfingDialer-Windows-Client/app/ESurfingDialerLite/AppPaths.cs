@@ -5,7 +5,9 @@ namespace ESurfingDialerLite;
 public static class AppPaths
 {
     public static string AppDataDirectory { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ESurfingDialerLite");
+        Environment.GetEnvironmentVariable("ESURFING_CLIENT_HOME") is { Length: > 0 } custom
+            ? Path.GetFullPath(custom)
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ESurfingDialerLite");
 
     public static string LogsDirectory { get; } = Path.Combine(AppDataDirectory, "logs");
 

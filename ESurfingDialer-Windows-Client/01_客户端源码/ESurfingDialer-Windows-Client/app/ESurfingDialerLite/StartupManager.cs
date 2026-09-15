@@ -26,6 +26,6 @@ public static class StartupManager
         }
 
         var exe = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "ESurfingDialerLite.exe");
-        key.SetValue(ValueName, $"\"{exe}\" --minimized");
+        key.SetValue(ValueName, $"\"{exe}\" --autostart");
     }
 }
