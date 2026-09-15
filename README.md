@@ -16,7 +16,7 @@
 
 适合直接安装在 Windows 电脑上。
 
-[下载 Windows 客户端 v1.01](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/client-v1.01/ESurfingDialer-Lite-v1.01-Setup.exe)
+[下载 Windows 客户端 v2.0](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.0/ESurfingDialer-Lite-v2.0-Setup.exe)
 
 </td>
 <td width="50%" valign="top">
