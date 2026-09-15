@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <title>ESurfingDialer disconnected</title>
-  <rect width="256" height="256" rx="48" fill="#303338"/>
-  <path d="M48 62 106 48v160l-58-14Z" fill="#FF7658"/>
-  <path d="M48 62 106 48v160l-58-14Z" fill="none" stroke="#FFFDF9" stroke-width="18" stroke-linejoin="round"/>
-  <path d="M106 48v160M146 166h22M146 128h38M146 90h54" fill="none" stroke="#FFFDF9" stroke-width="18" stroke-linecap="round"/>
-  <path d="M146 166h22M146 128h38M146 90h54" fill="none" stroke="#AEB4BC" stroke-width="12" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="ESurfingDialer">
+  <rect x="6" y="6" width="244" height="244" rx="48" fill="#FFFFFF" stroke="#E5E8EC" stroke-width="2"/>
+  <path d="M48 204V72L86 60V199M70 70L126 84V188L70 204Z M32 205H138" fill="none" stroke="#353D48" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="114" cy="138.5" r="5.5" fill="#353D48"/>
+  <rect x="154" y="171" width="16" height="34" rx="7" fill="#9AA3AE"/>
+  <rect x="183" y="137" width="16" height="68" rx="7" fill="#9AA3AE"/>
+  <rect x="212" y="103" width="16" height="102" rx="7" fill="#9AA3AE"/>
 </svg>

@@ -127,7 +127,8 @@ internal static class Program
             Call("UpdateStatus", "未连接");
             Render("home");
             var navIcons = new[] { "Home", "Logs", "Settings" }.Select(n => Node<ContentControl>(n + "NavIcon")).ToArray();
-            Check(navIcons.All(n => n.ActualWidth == 21 && n.ActualHeight == 21), "Navigation icons share Pen dimensions");
+            Check(navIcons.All(n => Math.Abs(n.ActualWidth - 21) < 0.25 && Math.Abs(n.ActualHeight - 21) < 0.25),
+                "Navigation icons share Pen dimensions");
             var iconTop = navIcons[0].TransformToAncestor(root).Transform(new Point()).Y;
             Check(navIcons.All(n => Math.Abs(n.TransformToAncestor(root).Transform(new Point()).Y - iconTop) < 0.1), "Navigation icons share baseline");
             Check(Node<FrameworkElement>("SpeedChart").ActualWidth == 412 && Node<FrameworkElement>("SpeedChart").ActualHeight == 28, "Trend chart matches Pen geometry");

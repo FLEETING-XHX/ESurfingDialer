@@ -1,8 +1,8 @@
 ﻿# ESurfingDialer Lite Windows Client
 
-当前版本：1.01
+当前版本：2.0
 
-当前源码包含尚未发布的新版 UI 和连接恢复修复，旧的 1.01 安装包不会随源码修改自动更新。
+当前源码已包含新版 UI、连接恢复修复和认证状态图标；旧的 1.01 安装包不会随源码修改自动更新。
 本轮功能、构建方法和验证范围见 [UI 与连接恢复说明](docs/UI-AND-RECOVERY.md)。
 
 这是 ESurfingDialer 的 Windows 轻量客户端工程，用来替代臃肿的官方天翼校园客户端做测试。
@@ -24,8 +24,9 @@
 
 - `1.00`：当前第一版测试安装包。
 - `1.01`：界面底部增加免费开源说明和原作者项目致谢链接。
-- 后续只要修改功能或修复 bug，就递增为 `1.02`、`1.03`。
-- 发给同学测试时，只发 `dist/ESurfingDialer-Lite-v1.01-Setup.exe`。
+- `2.0`：重做客户端界面，加入多账户、日志导出、连接恢复和认证状态托盘图标。
+- 后续只要修改功能或修复 bug，就递增为 `2.01`、`2.02`。
+- 发给同学测试时，只发 `dist/ESurfingDialer-Lite-v2.0-Setup.exe`。
 
 ## 构建
 
@@ -36,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File scripts\Build-Installer.ps1
 构建完成后安装包输出到：
 
 ```text
-dist\ESurfingDialer-Lite-v1.01-Setup.exe
+dist\ESurfingDialer-Lite-v2.0-Setup.exe
 ```
 
 ## 日志位置

@@ -1,13 +1,16 @@
 # ESurfingDialer Windows icons
 
-The icon family uses a dark charcoal tile, an open authentication door, and three signal bars.
-The status color is shared by the tray icon and the desktop icon variants:
+The icon family uses a white rounded-square background, a charcoal open door,
+and three authentication signal bars. The door is fixed; only the signal color
+changes with the authentication state.
 
-- `default`: blue, idle or not authenticated
-- `connecting`: amber, authenticating or waiting for health data
-- `connected`: green, authenticated
-- `disconnected`: gray, stopped or disconnected
+- `default` and `disconnected`: gray, not authenticated or stopped
+- `connecting`: amber, authentication in progress
+- `connected`: green, authentication and heartbeat confirmed
 - `error`: red, startup or runtime error
 
-The SVG files are the editable design source. The ICO files contain 16, 24, 32, 48, 64, 128,
-and 256 pixel variants for Windows shell and taskbar usage.
+`ESurfingDialer-default.ico` is the application, installer, and desktop
+shortcut icon. The tray controller switches among the state icons at runtime.
+
+The SVG files are editable source assets. Each ICO contains 16, 24, 32, 48,
+64, 128, and 256 pixel PNG entries for Windows shell, taskbar, and installer use.
