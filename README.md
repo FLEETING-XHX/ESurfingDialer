@@ -8,9 +8,7 @@
 
 下面两栏可以直接切换浏览：
 
-<table>
-<tr>
-<td width="50%" valign="top">
+
 
 ### Windows 客户端
 
@@ -18,8 +16,7 @@
 
 [下载 Windows 客户端 v2.0](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.0/ESurfingDialer-Lite-v2.0-Setup.exe)
 
-</td>
-<td width="50%" valign="top">
+
 
 ### Docker 软路由版
 
@@ -29,9 +26,7 @@
 
 [查看 Docker 安装教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)
 
-</td>
-</tr>
-</table>
+
 
 Docker 版本提供离线镜像包，软路由没有公网时也可以完成部署。
 
