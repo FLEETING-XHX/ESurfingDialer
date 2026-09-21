@@ -53,6 +53,7 @@ public sealed class DialerCoreProcess
             info.ArgumentList.Add(arg);
         info.Environment["STATE_DIR"] = AppPaths.DataDirectory;
         info.Environment["AUTO_REAUTH_ENABLED"] = "0";
+        info.Environment["HEALTH_WRITE_INTERVAL_SECONDS"] = "5";
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
         process.OutputDataReceived += (_, e) => { if (e.Data != null) ClientLog.Write(AppPaths.CoreLogFile, e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data != null) ClientLog.Write(AppPaths.CoreLogFile, e.Data); };
@@ -118,12 +119,13 @@ public sealed class DialerCoreProcess
                 RecoveryMessage?.Invoke("认证核心连续退出，请查看详细日志后手动连接。");
                 return;
             }
+            log($"增强连接检测到认证核心退出：检测时间={DateTimeOffset.UtcNow:O}，连续退出次数={_crashStreak}。");
         }
         for (var attempt = 1; attempt <= 5; attempt++)
         {
             var delay = Math.Min(60, 5 * (1 << Math.Min(4, attempt + _crashStreak - 2)));
             RecoveryMessage?.Invoke($"{delay} 秒后尝试重新启动认证核心。");
-            log($"{delay} 秒后自动重启认证核心。");
+            log($"增强连接恢复计划：恢复次数={attempt}，冷却={delay}s。");
             await Task.Delay(TimeSpan.FromSeconds(delay));
             lock (_gate)
             {

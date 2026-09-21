@@ -47,6 +47,23 @@ internal static class Program
         Check(health.IsCurrentFor(now.AddMinutes(-1), now) && health.HasRecentAuthentication(now), "Fresh health accepted");
         health.LastHeartbeatSuccessAt = now.AddMinutes(-20).ToUnixTimeSeconds();
         Check(!health.HasRecentAuthentication(now), "Stale heartbeat rejected");
+        Check(EnhancedConnectionPolicy.HealthCheckInterval(true) < EnhancedConnectionPolicy.HealthCheckInterval(false), "Enhanced health checks are faster");
+        Check(EnhancedConnectionPolicy.HealthCheckInterval(true) == TimeSpan.FromSeconds(5), "Enhanced health polling stays lightweight");
+        Check(EnhancedConnectionPolicy.RecoveryCooldown(1) == TimeSpan.FromSeconds(30)
+              && EnhancedConnectionPolicy.RecoveryCooldown(2) == TimeSpan.FromSeconds(60)
+              && EnhancedConnectionPolicy.RecoveryCooldown(3) == TimeSpan.FromSeconds(120), "Enhanced recovery uses bounded backoff");
+        var healthySnapshot = new HealthSnapshot
+        {
+            ProcessAlive = true, ClientThreadAlive = true, NetworkCheckThreadAlive = true, Authenticated = true,
+            LastUpdatedAt = now.ToUnixTimeSeconds(), LastHeartbeatSuccessAt = now.ToUnixTimeSeconds()
+        };
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null, "Healthy core does not trigger enhanced recovery");
+        healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-11).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证心跳长时间未确认", "Stale authentication heartbeat triggers enhanced recovery");
+        healthySnapshot.LastHeartbeatSuccessAt = now.ToUnixTimeSeconds();
+        healthySnapshot.Authenticated = false;
+        healthySnapshot.LastHeartbeatSuccessAt = now.AddSeconds(-46).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证状态持续丢失", "Sustained authentication loss triggers enhanced recovery");
 
         var app = new System.Windows.Application();
         var window = new MainWindow(previewMode: true);
@@ -65,6 +82,13 @@ internal static class Program
                 typeof(MainWindow).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, parameters);
             T Node<T>(string name) => (T)window.FindName(name);
             var liveConfig = (ClientConfig)typeof(MainWindow).GetField("_config", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            var healthTimer = (System.Windows.Threading.DispatcherTimer)typeof(MainWindow).GetField("_healthTimer", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            Check(healthTimer.Interval == EnhancedConnectionPolicy.EnhancedHealthCheckInterval, "Enhanced mode configures fast health polling");
+            liveConfig.EnhancedConnection = false;
+            Call("ApplySettings");
+            Check(healthTimer.Interval == EnhancedConnectionPolicy.ConservativeHealthCheckInterval, "Disabled enhancement uses conservative health polling");
+            liveConfig.EnhancedConnection = true;
+            Call("ApplySettings");
             var selected = liveConfig.CurrentAccount!;
             var remark = selected.Name;
             Check(Node<TextBlock>("AccountSummaryText").Text == remark, "Account summary prefers remark");

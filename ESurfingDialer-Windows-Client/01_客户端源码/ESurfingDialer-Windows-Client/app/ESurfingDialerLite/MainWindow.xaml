@@ -96,7 +96,7 @@
        </Border>
        <TextBlock Text="连接设置" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Height="24"/>
        <Border Style="{StaticResource Card}" Height="142" Padding="32,16" Margin="0,0,0,24"><StackPanel>
-        <Grid Height="54" ><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="增强连接" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="核心异常退出或无响应时自动恢复" Style="{StaticResource Caption}" Margin="0,4,0,0" FontSize="10"/></StackPanel><CheckBox x:Name="EnhancedConnectionCheckBox" Grid.Column="1" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="增强连接"/></Grid>
+        <Grid Height="54" ><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="增强连接" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="轻量监测异常，带冷却保护" Style="{StaticResource Caption}" Margin="0,4,0,0" FontSize="10"/></StackPanel><CheckBox x:Name="EnhancedConnectionCheckBox" Grid.Column="1" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="增强连接"/></Grid>
         <StackPanel Margin="0,16,0,0"><TextBlock Text="后台运行提示" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="连接状态通过任务栏托盘图标显示" Style="{StaticResource Caption}" Margin="0,4,0,0"/></StackPanel>
        </StackPanel></Border>
        <TextBlock Text="其他" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Height="24"/>

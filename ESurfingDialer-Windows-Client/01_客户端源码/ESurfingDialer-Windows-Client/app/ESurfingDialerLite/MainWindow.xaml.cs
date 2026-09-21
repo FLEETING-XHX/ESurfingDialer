@@ -29,7 +29,14 @@ public partial class MainWindow : Window
     private bool _busy;
     private bool _disposed;
     private IInputElement? _previousFocus;
-    private DateTimeOffset _lastRecovery = DateTimeOffset.MinValue;
+    private int _consecutiveUnhealthyChecks;
+    private int _automaticRecoveryAttempts;
+    private int _automaticRecoveryCount;
+    private bool _automaticRecoveryExhausted;
+    private DateTimeOffset _nextRecoveryAllowedAt = DateTimeOffset.MinValue;
+    private DateTimeOffset? _lastHealthyAt;
+    private DateTimeOffset? _lossDetectedAt;
+    private DateTimeOffset? _recoveryStartedAt;
 
     public MainWindow() : this(false) { }
 
@@ -50,7 +57,6 @@ public partial class MainWindow : Window
             if (_disposed) return;
             AddSummary("自动恢复", message, "Coral");
         });
-        _healthTimer.Interval = TimeSpan.FromSeconds(5);
         _healthTimer.Tick += async (_, _) => await RefreshHealthAsync();
         _healthTimer.Start();
         _speedTimer.Interval = TimeSpan.FromSeconds(1);
@@ -80,11 +86,13 @@ public partial class MainWindow : Window
         EnhancedConnectionCheckBox.IsChecked = _config.EnhancedConnection;
         MinimizeSettingRow.Visibility = _config.AutoStart ? Visibility.Visible : Visibility.Collapsed;
         _dialer.EnhancedConnection = _config.EnhancedConnection;
+        _healthTimer.Interval = EnhancedConnectionPolicy.HealthCheckInterval(_config.EnhancedConnection);
     }
 
     private void SettingsChanged_Click(object sender, RoutedEventArgs e)
     {
         var previousAutoStart = _config.AutoStart;
+        var previousEnhancedConnection = _config.EnhancedConnection;
         _config.AutoStart = AutoStartCheckBox.IsChecked == true;
         _config.StartMinimized = StartMinimizedCheckBox.IsChecked == true;
         _config.AutoConnect = AutoConnectCheckBox.IsChecked == true;
@@ -94,6 +102,13 @@ public partial class MainWindow : Window
             if (previousAutoStart != _config.AutoStart) StartupManager.SetEnabled(_config.AutoStart);
             _configStore.Save(_config);
             ApplySettings();
+            if (previousEnhancedConnection != _config.EnhancedConnection)
+            {
+                if (!_config.EnhancedConnection) ResetEnhancedRecoveryState();
+                AppendLog(_config.EnhancedConnection
+                    ? "增强连接已开启：健康检测将更频繁，并保留冷却和最大恢复次数限制。"
+                    : "增强连接已关闭：客户端改用保守检测节奏，核心自身心跳恢复保持开启。");
+            }
             Notify("设置已保存");
         }
         catch (Exception ex)
@@ -125,9 +140,10 @@ public partial class MainWindow : Window
         await StartDialerAsync();
     }
 
-    private async Task StartDialerAsync()
+    private async Task<bool> StartDialerAsync(bool automaticRecovery = false)
     {
-        if (_busy || _disposed) return;
+        if (_busy || _disposed) return false;
+        if (!automaticRecovery) ResetEnhancedRecoveryState();
         _busy = true;
         CampusConnectionButton.IsEnabled = false;
         try
@@ -138,19 +154,22 @@ public partial class MainWindow : Window
             UpdateStatus("连接中");
             AppendLog("准备启动认证核心。");
             await _dialer.StartAsync(_config, password, AppendLog);
+            return true;
         }
         catch (Exception ex)
         {
             UpdateStatus("连接失败");
             AppendLog("启动失败：" + ex.Message);
             Notify("连接失败：" + ex.Message);
+            return false;
         }
         finally { _busy = false; CampusConnectionButton.IsEnabled = true; }
     }
 
-    private async Task<bool> StopConnectionAsync()
+    private async Task<bool> StopConnectionAsync(bool userInitiated = true)
     {
         if (_busy) return false;
+        if (userInitiated) ResetEnhancedRecoveryState();
         _busy = true;
         CampusConnectionButton.IsEnabled = false;
         AccountSheet.IsEnabled = false;
@@ -158,7 +177,7 @@ public partial class MainWindow : Window
         {
             await Task.Run(_dialer.Stop);
             UpdateStatus("已断开");
-            AppendLog("用户停止认证核心。");
+            AppendLog(userInitiated ? "用户停止认证核心。" : "增强连接正在重启认证核心。");
             return true;
         }
         catch (Exception ex) { Notify("停止失败：" + ex.Message); return false; }
@@ -170,28 +189,107 @@ public partial class MainWindow : Window
         if (_disposed || _busy) return;
         var health = HealthSnapshot.Load();
         var now = DateTimeOffset.UtcNow;
-        var usable = _dialer.IsRunning && health?.IsCurrentFor(_dialer.StartedAt, now) == true;
+        var healthIsCurrent = _dialer.IsRunning
+            && health?.IsCurrentFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true;
+        var usable = healthIsCurrent && health!.Authenticated && health.HasRecentAuthentication(now);
         HealthTextBlock.Text = _dialer.IsRunning
             ? health == null ? "核心运行中，等待健康状态。" : "核心状态：" + health.ToDisplayText()
             : "认证核心未运行。";
         if (usable && health!.Authenticated && health.HasRecentAuthentication(now))
+        {
+            RecordHealthyConnection(now);
             UpdateStatus("已连接");
+        }
         else if (_dialer.IsRequested)
             UpdateStatus("连接中");
         else if (_currentStatus is "已连接" or "连接中")
             UpdateStatus("已断开");
 
-        // A captive portal alone must not restart a live core that is already recovering.
-        if (_config.EnhancedConnection && _dialer.IsRunning
-            && now - _dialer.StartedAt > TimeSpan.FromSeconds(120)
-            && now - _lastRecovery > TimeSpan.FromSeconds(120)
-            && (!usable || health is { ClientThreadAlive: false } || health is { NetworkCheckThreadAlive: false }))
+        if (_config.EnhancedConnection && _dialer.IsRequested && _dialer.IsRunning
+            && now - _dialer.StartedAt >= EnhancedConnectionPolicy.EnhancedStartupGrace)
         {
-            _lastRecovery = now;
-            AddSummary("恢复认证核心", "检测到核心无响应，正在重新启动。", "Coral");
-            if (await StopConnectionAsync()) await StartDialerAsync();
+            var reason = EnhancedConnectionPolicy.RecoverableFailureReason(health, _dialer.StartedAt, now);
+            if (reason == null) _consecutiveUnhealthyChecks = 0;
+            else
+            {
+                RecordConnectionLoss(now, reason);
+                _consecutiveUnhealthyChecks++;
+                await TryEnhancedRecoveryAsync(now, reason);
+            }
+        }
+        else if (!_dialer.IsRequested || !_config.EnhancedConnection)
+        {
+            _consecutiveUnhealthyChecks = 0;
         }
         if (DetailsOverlay.Visibility == Visibility.Visible) RefreshDetails();
+    }
+
+    private void RecordConnectionLoss(DateTimeOffset now, string reason)
+    {
+        if (_lossDetectedAt != null) return;
+        _lossDetectedAt = now;
+        var disconnectedAt = _lastHealthyAt ?? now;
+        AppendLog($"增强连接检测到异常：掉线时间={disconnectedAt:O}，检测时间={now:O}，原因={reason}。");
+    }
+
+    private void RecordHealthyConnection(DateTimeOffset now)
+    {
+        if (_lossDetectedAt is { } detectedAt)
+        {
+            var disconnectedAt = _lastHealthyAt ?? detectedAt;
+            var recoveryStartedAt = _recoveryStartedAt ?? detectedAt;
+            var recoveryDuration = Math.Max(0, (now - recoveryStartedAt).TotalSeconds);
+            var outageDuration = Math.Max(0, (now - disconnectedAt).TotalSeconds);
+            AppendLog($"认证恢复确认：掉线时间={disconnectedAt:O}，检测时间={detectedAt:O}，恢复次数={_automaticRecoveryCount}，重新认证耗时={recoveryDuration:F0}s，预计断网={outageDuration:F0}s。");
+            if (_recoveryStartedAt != null)
+                AddSummary("认证恢复完成", $"重新认证约 {recoveryDuration:F0} 秒，断网约 {outageDuration:F0} 秒。", "Green");
+        }
+        _lastHealthyAt = now;
+        _lossDetectedAt = null;
+        _recoveryStartedAt = null;
+        _consecutiveUnhealthyChecks = 0;
+        _automaticRecoveryAttempts = 0;
+        _automaticRecoveryExhausted = false;
+    }
+
+    private async Task TryEnhancedRecoveryAsync(DateTimeOffset now, string reason)
+    {
+        if (_consecutiveUnhealthyChecks < EnhancedConnectionPolicy.ConsecutiveUnhealthyChecksBeforeRecovery
+            || now < _nextRecoveryAllowedAt || _automaticRecoveryExhausted || _busy) return;
+        if (_automaticRecoveryAttempts >= EnhancedConnectionPolicy.MaximumAutomaticRecoveries)
+        {
+            _automaticRecoveryExhausted = true;
+            AppendLog($"增强连接已暂停自动恢复：连续恢复已达上限 {EnhancedConnectionPolicy.MaximumAutomaticRecoveries} 次，最后原因={reason}。");
+            AddSummary("自动恢复已暂停", "请查看详细日志后手动连接。", "Coral");
+            return;
+        }
+
+        _automaticRecoveryAttempts++;
+        _automaticRecoveryCount++;
+        var cooldown = EnhancedConnectionPolicy.RecoveryCooldown(_automaticRecoveryAttempts);
+        _nextRecoveryAllowedAt = now + cooldown;
+        _recoveryStartedAt = now;
+        AppendLog($"增强连接开始恢复：检测时间={now:O}，原因={reason}，恢复次数={_automaticRecoveryCount}，下次恢复最早允许时间={_nextRecoveryAllowedAt:O}。");
+        AddSummary("增强恢复", "检测到认证异常，正在重新启动认证核心。", "Coral");
+        if (!await StopConnectionAsync(userInitiated: false))
+        {
+            AppendLog("增强连接恢复未能停止旧核心，将在冷却后重试。");
+            return;
+        }
+        if (!await StartDialerAsync(automaticRecovery: true))
+            AppendLog("增强连接恢复未能启动认证核心，将按退避策略重试。");
+    }
+
+    private void ResetEnhancedRecoveryState()
+    {
+        _consecutiveUnhealthyChecks = 0;
+        _automaticRecoveryAttempts = 0;
+        _automaticRecoveryCount = 0;
+        _automaticRecoveryExhausted = false;
+        _nextRecoveryAllowedAt = DateTimeOffset.MinValue;
+        _lastHealthyAt = null;
+        _lossDetectedAt = null;
+        _recoveryStartedAt = null;
     }
 
     private void UpdateStatus(string status)
