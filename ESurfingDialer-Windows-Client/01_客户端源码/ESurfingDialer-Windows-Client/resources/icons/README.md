@@ -1,8 +1,8 @@
 # ESurfingDialer Windows icons
 
-The icon family uses a white rounded-square background, a charcoal open door,
-and three authentication signal bars. The door is fixed; only the signal color
-changes with the authentication state.
+The icon family uses a white rounded-square background and three authentication
+signal bars. The bars are the complete mark; only their color changes with the
+authentication state.
 
 - `default` and `disconnected`: gray, not authenticated or stopped
 - `connecting`: amber, authentication in progress

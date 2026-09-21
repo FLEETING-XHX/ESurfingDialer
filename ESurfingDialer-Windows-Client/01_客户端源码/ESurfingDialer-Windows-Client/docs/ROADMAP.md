@@ -1,34 +1,62 @@
-﻿# Roadmap
+# 未来开发方向
 
-## Phase 1 - Desktop Shell
+> 本文记录 ESurfingDialer 的后续规划。除非版本说明或发布日志明确标记为“已完成”，本文列出的内容都属于计划，不代表当前版本已经提供。
 
-- WPF window
-- Tray icon
-- Basic config save/load
-- Core process launcher
+## 1. macOS 适配
 
-## Phase 2 - Stable Runtime
+- 在保留现有 Java 认证核心的基础上，研究 macOS 客户端适配方案。
+- 客户端界面、托盘状态、开机启动、日志目录和安装方式需要按 macOS 的系统规范重新实现，不能直接复制现有 WPF 与 Windows 注册表逻辑。
+- 提供适合 macOS 用户的离线安装包与新手使用说明。
+- 在正式发布前，覆盖常见 macOS 版本、网络切换、休眠唤醒和后台运行场景的测试。
 
-- Build and package `client.jar`
-- Monitor Java process
-- Read health state from core
-- Auto reconnect button
-- Log viewer
+## 2. 使用体验与 UI
 
-## Phase 3 - Windows Integration
+- 根据实际使用反馈，持续优化主页、账户管理、日志与设置页面的布局和文案。
+- 让连接、正在认证、已连接、掉认证和异常恢复等状态更直观，并通过任务栏托盘图标同步展示。
+- 优化多账户的添加、编辑、切换和删除流程，减少新用户的配置步骤。
+- 继续完善网络状态展示、日志筛选和错误提示，让用户能更容易判断是账号、校园网、认证页还是本地网络问题。
+- 保持界面简洁，优先保证常用操作在一个页面内完成。
 
-- DPAPI-encrypted password storage
-- Startup registry toggle
-- Minimize-to-tray startup
-- Single-instance guard
+## 3. 增强连接策略
 
-## Phase 4 - Installer
+当前的“增强连接”用于监视认证核心异常退出或长时间无有效状态时的恢复。
 
-- Inno Setup installer
-- Install directory selection
-- Treat the install directory picker as a parent-folder picker: if the user chooses `D:\software`, install into `D:\software\ESurfingDialer Lite`; avoid scattering files directly into the selected parent folder and avoid ambiguous double-folder behavior.
-- Desktop shortcut
-- Start menu shortcut
-- Uninstall cleanup choices
+后续计划将其强化为一套可控的快速恢复策略：
+
+- 开启后提高健康状态检测频率，更早发现认证核心卡死、异常退出或无响应。
+- 发现掉认证后更快触发认证恢复，尽量缩短断网时间。
+- 保留启动宽限、恢复冷却、失败退避和最大重试次数，避免临时网络抖动导致反复认证或触发校园网限制。
+- 在日志中记录掉线时间、检测时间、恢复次数和重新认证耗时，作为后续优化依据。
+- 关闭后继续使用更保守的检测节奏；核心已有的正常心跳与掉认证恢复不应因此失效。
+
+## 4. 稳定性与代码质量
+
+- 持续检查认证、心跳、重认证、网络探测和进程恢复逻辑，优先修复会造成长时间断网的问题。
+- 为关键逻辑补充回归测试，避免修复一个问题后引入旧问题。
+- 定期清理无用代码、重复逻辑、过期配置和构建垃圾，降低维护成本与后台资源占用。
+- 明确区分客户端界面、认证核心、安装脚本和部署文档的职责，减少功能改动互相影响。
+- 对日志、配置和账户密码继续保持最小化保存与脱敏导出原则。
+
+## 5. 发布与安装包规范
+
+跨平台版本发布后，统一使用以下文件命名：
+
+| 平台 | 文件命名 |
+| --- | --- |
+| Windows 客户端 | `ESurfingDialer-Windows-vx.x-Setup.exe` |
+| macOS 客户端 | `ESurfingDialer-MacOS-vx.x-Setup.exe` |
+| Docker 软路由版 | `ESurfingDialer-Docker-vx.x.zip` |
+
+- 当前已发布的旧安装包保留原名称，不强行重命名或替换。
+- 下一次对应平台的正式发布开始采用新命名，方便用户区分系统、版本和安装方式。
+- 安装包应继续优先支持离线部署，避免首次安装依赖临时网络下载。
+- 每次发布应附带版本说明、适用平台、校验信息和清晰的新手部署步骤。
+
+## 6. 文档与反馈
+
+- 持续完善 Windows、macOS 和 Docker 的使用教程，尤其是截图化、面向新手的离线部署说明。
+- Docker 版本继续以离线部署为主，降低软路由没有公网时的安装门槛。
+- 在设置页保留 GitHub 仓库入口，并在未来评估安全的检查更新功能。
+- 收集不同学校、不同运营商认证页面和不同网络环境下的日志反馈，以改进兼容性；提交日志前应先检查其中是否包含账号、IP 或其他隐私信息。
 
 

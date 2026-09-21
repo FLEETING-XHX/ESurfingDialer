@@ -203,6 +203,7 @@ public partial class MainWindow : Window
         SpeedStatusText.Text = status == "已连接" ? "已连接" : status == "连接中" ? "正在连接" : "等待连接";
         var tone = status switch { "已连接" => "Green", "连接中" => "Coral", "连接失败" => "Coral", _ => "Offline" };
         var brush = Color(tone);
+        BrandSignalBar1.Background = BrandSignalBar2.Background = BrandSignalBar3.Background = brush;
         CampusStatusDot.Fill = brush;
         SignalBar1.Background = SignalBar2.Background = SignalBar3.Background = brush;
         CampusConnectionButton.ToolTip = _dialer.IsRequested ? "点击断开校园网" : "点击连接校园网";
@@ -240,12 +241,11 @@ public partial class MainWindow : Window
     private void ShowAccounts()
     {
         _previousFocus = Keyboard.FocusedElement;
-        _editingAccounts = false;
-        EditAccountsButton.Content = "编辑账户";
+        _editingAccounts = true;
         ShowAccountList();
         AccountOverlay.Visibility = Visibility.Visible;
         MainContent.IsEnabled = false;
-        EditAccountsButton.Focus();
+        AddAccountButton.Focus();
         if (SystemParameters.ClientAreaAnimation && Mouse.LeftButton == MouseButtonState.Released)
             SheetTranslation.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(530, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
     }
@@ -259,7 +259,7 @@ public partial class MainWindow : Window
             a.Id == _config.SelectedAccountId ? "当前使用 · " + (_currentStatus.Length > 0 ? _currentStatus : "未连接") : "点击切换",
             _editingAccounts, a.Id == _config.SelectedAccountId ? Color("SoftGreen") : System.Windows.Media.Brushes.White,
             a.Id == _config.SelectedAccountId ? Color("Green") : System.Windows.Media.Brushes.Transparent)).ToList();
-        AccountHint.Text = _config.Accounts.Count == 0 ? "还没有账户，点击右上角 ＋ 添加" : "点击账号切换；右上角可编辑或添加账户";
+        AccountHint.Text = _config.Accounts.Count == 0 ? "还没有账户，点击右上角 ＋ 添加" : "点击账号即可切换当前使用的校园网账户";
     }
 
     private void ShowAccountList()
@@ -273,8 +273,7 @@ public partial class MainWindow : Window
     }
     private void EditAccounts_Click(object sender, RoutedEventArgs e)
     {
-        _editingAccounts = !_editingAccounts;
-        EditAccountsButton.Content = _editingAccounts ? "完成" : "编辑账户";
+        _editingAccounts = true;
         RefreshAccounts();
     }
     private void AddAccount_Click(object sender, RoutedEventArgs e) => BeginAccountEdit(null);
@@ -336,7 +335,6 @@ public partial class MainWindow : Window
     private async void SelectAccount_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || (sender as Button)?.Tag is not string id) return;
-        if (_editingAccounts) { BeginAccountEdit(id); return; }
         if (_config.SelectedAccountId == id) { CloseAccounts(); return; }
         var reconnect = _dialer.IsRequested;
         if (reconnect && !await StopConnectionAsync()) return;
@@ -448,6 +446,12 @@ public partial class MainWindow : Window
     }
     private void Notify(string message)
     {
+        var isError = message.Contains("失败", StringComparison.Ordinal) || message.Contains("错误", StringComparison.Ordinal) || message.Contains("无法", StringComparison.Ordinal);
+        var tone = isError ? "Coral" : "Green";
+        Notice.Background = Color(isError ? "SoftCoral" : "SoftGreen");
+        Notice.BorderBrush = Color(tone);
+        NoticeText.Foreground = Color(tone);
+        NoticeAccent.Fill = Color(tone);
         NoticeText.Text = message;
         Notice.Visibility = Visibility.Visible;
         _noticeTimer.Stop();

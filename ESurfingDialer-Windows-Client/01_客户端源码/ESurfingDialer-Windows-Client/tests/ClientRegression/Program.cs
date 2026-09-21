@@ -84,6 +84,7 @@ internal static class Program
                   Node<TextBlock>("UploadSpeedText").Foreground == window.FindResource("Coral"), "Download and upload use distinct semantic colors");
             Check(Node<TextBlock>("DownloadSpeedText").Foreground == Node<System.Windows.Shapes.Polyline>("DownloadLine").Stroke &&
                   Node<TextBlock>("UploadSpeedText").Foreground == Node<System.Windows.Shapes.Polyline>("UploadLine").Stroke, "Rate colors match trend lines");
+            Check(Node<ContentControl>("CampusIconControl").Content == window.FindResource("PenCampusIcon"), "Campus card uses Pen icon");
             Render("home");
             Check(window.FindName("StatusDot") == null && window.FindName("StatusText") == null,
                 "Duplicate header connection indicator removed");
@@ -150,6 +151,7 @@ internal static class Program
             Check(Node<UIElement>("AccountOverlay").Visibility == Visibility.Visible, "Management card still opens account sheet");
             Node<System.Windows.Media.TranslateTransform>("SheetTranslation").BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
             Render("accounts");
+            Check(window.FindName("EditAccountsButton") == null && Node<ItemsControl>("AccountList").Items.Cast<AccountRow>().All(x => x.Editing), "Account actions match latest Pen layout");
             Call("EditAccounts_Click", window, new RoutedEventArgs()); Render("accounts-edit");
             Check(Node<ItemsControl>("AccountList").Items.Cast<AccountRow>().All(x => x.Editing), "Edit actions enabled");
             Call("BeginAccountEdit", new object[] { null! }); Render("account-add");
@@ -163,6 +165,10 @@ internal static class Program
             Call("SaveAccount_Click", window, new RoutedEventArgs());
             Check(store.Load().Accounts.Last().Name == "修改后的账户", "Account edited and saved");
             Call("CloseAccounts");
+            Call("Notify", "设置已保存");
+            Render("notice");
+            var notice = Node<Border>("Notice");
+            Check(notice.HorizontalAlignment == HorizontalAlignment.Right && notice.ActualWidth < 300 && Node<TextBlock>("NoticeText").TextAlignment == TextAlignment.Right, "Notice fits content and aligns right");
             Call("OpenLogsButton_Click", window, new RoutedEventArgs()); Render("detailed-logs");
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));
