@@ -11,6 +11,8 @@
 
 [下载 Windows 客户端 v2.2](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.2/ESurfingDialer-Windows-v2.2-Setup.exe)
 
+> **Warning：**Windows 客户端 v2.2 尚未经真实网络环境的长期测试，仅建议用于尝鲜与反馈；请保留现有可用的认证方式。
+
 
 
 ### Docker 软路由版：
@@ -24,6 +26,8 @@
 
 
 Docker 版本提供离线镜像包，软路由没有公网时也可以完成部署。
+
+> **稳定性记录：**Docker v1.3 已连续测试 14 天，期间未出现断网情况。
 
 ## 版本说明
 
