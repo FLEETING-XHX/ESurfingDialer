@@ -10,7 +10,7 @@ public static class ClientLog
     private static string[] _secrets = [];
     public static void SetSecrets(IEnumerable<string> values)
     {
-        lock (Gate) _secrets = _secrets.Concat(values).Where(v => !string.IsNullOrEmpty(v)).Distinct().OrderByDescending(v => v.Length).ToArray();
+        lock (Gate) _secrets = values.Where(v => !string.IsNullOrEmpty(v)).Distinct().OrderByDescending(v => v.Length).ToArray();
     }
     public static string Redact(string text)
     {

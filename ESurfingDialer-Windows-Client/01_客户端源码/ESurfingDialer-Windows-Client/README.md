@@ -1,6 +1,6 @@
 ﻿# ESurfingDialer Lite Windows Client
 
-当前版本：2.1
+当前版本：2.2
 
 当前源码已包含新版 UI、连接恢复修复和认证状态图标；旧的 1.01 安装包不会随源码修改自动更新。
 本轮功能、构建方法和验证范围见 [UI 与连接恢复说明](docs/UI-AND-RECOVERY.md)。
@@ -27,8 +27,9 @@
 - `1.01`：界面底部增加免费开源说明和原作者项目致谢链接。
 - `2.0`：重做客户端界面，加入多账户、日志导出、连接恢复和认证状态托盘图标。
 - `2.1`：完成轻量增强连接策略，加入有边界的异常恢复与恢复事件日志。
-- 后续只要修改功能或修复 bug，就递增为 `2.2`、`2.3`。
-- 发给同学测试时，只发 [v2.1 安装包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.1/ESurfingDialer-Lite-v2.1-Setup.exe)。
+- `2.2`：完善认证核心的健康信号、异常恢复边界和回归覆盖；此 Windows 客户端未经真实长期环境验证，仅供尝鲜测试。
+- 后续只要修改功能或修复 bug，就递增为 `2.3`、`2.4`。
+- 发给同学测试时，只发 [v2.2 安装包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.2/ESurfingDialer-Windows-v2.2-Setup.exe)。
 
 ## 构建
 
@@ -39,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File scripts\Build-Installer.ps1
 构建完成后安装包输出到：
 
 ```text
-dist\ESurfingDialer-Lite-v2.1-Setup.exe
+dist\ESurfingDialer-Windows-v2.2-Setup.exe
 ```
 
 ## 日志位置

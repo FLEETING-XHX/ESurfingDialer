@@ -55,24 +55,30 @@ object DialerApp {
         States.useDynarmic = cmd.hasOption("dynarmic")
         DeviceIdentityStore.loadIntoStates()
         HealthStatus.startReporter()
+        val repeatedLogLimiter = LogRateLimiter()
 
         val networkCheck = object : Thread() {
             override fun run() {
-                HealthStatus.networkCheckThreadAlive = true
+                HealthStatus.updateNetworkCheckThreadAlive(true)
                 while (isRunning) {
                     try {
                         val networkStatus = checkConnectivity()
+                        val suspicious = networkStatus.status != ConnectivityStatus.SUCCESS
 
                         when (networkStatus.status) {
                             ConnectivityStatus.SUCCESS -> {
                                 HealthStatus.markNetworkCheckSuccess()
-                                States.networkStatus = networkStatus.status
+                                States.updateNetworkStatus(networkStatus.status)
+                                repeatedLogLimiter.reset("network-error")
+                                repeatedLogLimiter.reset("portal-missing-parameters")
+                                repeatedLogLimiter.reset("portal-debounced")
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP -> {
                                 HealthStatus.markError("No parameter detected in url")
-                                logger.error("No parameter detected in url.")
-                                if (!HealthStatus.authenticated) States.networkStatus = networkStatus.status
+                                if (repeatedLogLimiter.shouldLog("portal-missing-parameters"))
+                                    logger.error("No parameter detected in url.")
+                                if (!HealthStatus.authenticated) States.updateNetworkStatus(networkStatus.status)
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
@@ -81,7 +87,7 @@ object DialerApp {
                                 val now = System.currentTimeMillis() / 1000
                                 HealthStatus.lastNetworkCheckAt = now
                                 if (!HealthStatus.authenticated) {
-                                    States.networkStatus = networkStatus.status
+                                    States.updateNetworkStatus(networkStatus.status)
                                 } else {
                                     val count = HealthStatus.consecutivePortalDetections.incrementAndGet()
                                     if (RecoveryPolicy.shouldReauthenticate(count,
@@ -89,9 +95,10 @@ object DialerApp {
                                             now - HealthStatus.lastLoginSuccessAt,
                                             now - HealthStatus.lastPortalReauthAt)) {
                                         HealthStatus.lastPortalReauthAt = now
-                                        States.networkStatus = networkStatus.status
+                                        States.updateNetworkStatus(networkStatus.status)
                                         logger.warn("PORTAL_REAUTH_REQUESTED count=$count")
-                                    } else {
+                                        repeatedLogLimiter.reset("portal-debounced")
+                                    } else if (repeatedLogLimiter.shouldLog("portal-debounced")) {
                                         logger.info("PORTAL_REAUTH_DEBOUNCED count=$count")
                                     }
                                 }
@@ -99,25 +106,27 @@ object DialerApp {
 
                             ConnectivityStatus.REQUEST_ERROR -> {
                                 HealthStatus.markError(networkStatus.message)
-                                logger.error("Request Error: ${networkStatus.message}")
-                                if (!HealthStatus.authenticated) States.networkStatus = networkStatus.status
+                                if (repeatedLogLimiter.shouldLog("network-error"))
+                                    logger.error("Request Error: ${networkStatus.message}")
+                                if (!HealthStatus.authenticated) States.updateNetworkStatus(networkStatus.status)
                             }
 
                             ConnectivityStatus.DEFAULT -> {
-                                if (!HealthStatus.authenticated) States.networkStatus = networkStatus.status
+                                if (!HealthStatus.authenticated) States.updateNetworkStatus(networkStatus.status)
                             }
                         }
-                        sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
+                        CoreSignals.waitForNetworkMonitor(RuntimeConfig.networkCheckDelaySeconds(suspicious) * 1000)
                     } catch (e: InterruptedException) {
                         currentThread().interrupt()
                         break
                     } catch (e: Exception) {
                         HealthStatus.markError("network monitor recovered: ${e.message}")
-                        logger.error("NETWORK_MONITOR_RECOVERED", e)
-                        sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
+                        if (repeatedLogLimiter.shouldLog("network-monitor-exception"))
+                            logger.error("NETWORK_MONITOR_RECOVERED", e)
+                        CoreSignals.waitForNetworkMonitor(RuntimeConfig.networkCheckDelaySeconds(suspicious = true) * 1000)
                     }
                 }
-                HealthStatus.networkCheckThreadAlive = false
+                HealthStatus.updateNetworkCheckThreadAlive(false)
             }
         }
 
@@ -163,7 +172,11 @@ object DialerApp {
             kotlin.concurrent.thread(name = "windows-control", isDaemon = true) {
                 while (true) {
                     val command = readlnOrNull() ?: return@thread
-                    if (command == "stop") exitProcess(0)
+                    when (command.trim().lowercase()) {
+                        "stop" -> exitProcess(0)
+                        "enhanced on", "enhanced=1", "enhanced true" -> RuntimeConfig.setEnhancedConnection(true)
+                        "enhanced off", "enhanced=0", "enhanced false" -> RuntimeConfig.setEnhancedConnection(false)
+                    }
                 }
             }
         }

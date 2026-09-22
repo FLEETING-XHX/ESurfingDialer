@@ -27,6 +27,15 @@ fun resetApiConnections() {
     apiClient.connectionPool.evictAll()
 }
 
+fun createProbeHttpClient(timeoutSeconds: Long): OkHttpClient = OkHttpClient.Builder()
+    .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
+    .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+    .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
+    .callTimeout(timeoutSeconds, TimeUnit.SECONDS)
+    .followRedirects(false)
+    .followSslRedirects(false)
+    .build()
+
 fun post(url: String, data: String, extraHeaders: HashMap<String, String> = HashMap()): NetResult<ResponseBody> {
     val type = "application/x-www-form-urlencoded".toMediaTypeOrNull()
     val body = data.toRequestBody(type)
@@ -54,7 +63,7 @@ fun post(url: String, data: String, extraHeaders: HashMap<String, String> = Hash
         } else {
             NetResult.Success(responseBody)
         }
-    } catch (e: Throwable) {
-        NetResult.Error(e.stackTraceToString())
+    } catch (e: Exception) {
+        NetResult.Error(e.localizedMessage ?: e::class.java.simpleName)
     }
 }

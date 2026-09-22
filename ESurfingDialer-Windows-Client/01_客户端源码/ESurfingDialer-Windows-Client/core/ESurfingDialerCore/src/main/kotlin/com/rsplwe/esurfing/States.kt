@@ -18,6 +18,12 @@ object States {
     @Volatile
     var networkStatus: ConnectivityStatus = ConnectivityStatus.DEFAULT
 
+    fun updateNetworkStatus(status: ConnectivityStatus) {
+        val changed = networkStatus != status
+        networkStatus = status
+        if (changed) CoreSignals.wakeClient()
+    }
+
     @Volatile
     var isRunning = true
 

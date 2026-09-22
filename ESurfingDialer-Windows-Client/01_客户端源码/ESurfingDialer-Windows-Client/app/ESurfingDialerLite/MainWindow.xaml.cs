@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     private bool _exitRequested;
     private bool _busy;
     private bool _disposed;
+    private bool _refreshingHealth;
+    private string _secretFingerprint = "";
     private IInputElement? _previousFocus;
     private int _consecutiveUnhealthyChecks;
     private int _automaticRecoveryAttempts;
@@ -57,11 +59,11 @@ public partial class MainWindow : Window
             if (_disposed) return;
             AddSummary("自动恢复", message, "Coral");
         });
-        _healthTimer.Tick += async (_, _) => await RefreshHealthAsync();
+        _healthTimer.Tick += async (_, _) => await RefreshHealthSafelyAsync();
         _healthTimer.Start();
         _speedTimer.Interval = TimeSpan.FromSeconds(1);
         _speedTimer.Tick += (_, _) => RefreshSpeed();
-        _speedTimer.Start();
+        IsVisibleChanged += (_, _) => UpdateSpeedSampling();
         _noticeTimer.Interval = TimeSpan.FromSeconds(4);
         _noticeTimer.Tick += (_, _) => { Notice.Visibility = Visibility.Collapsed; _noticeTimer.Stop(); };
         Loaded += async (_, _) =>
@@ -189,13 +191,12 @@ public partial class MainWindow : Window
         if (_disposed || _busy) return;
         var health = HealthSnapshot.Load();
         var now = DateTimeOffset.UtcNow;
-        var healthIsCurrent = _dialer.IsRunning
-            && health?.IsCurrentFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true;
-        var usable = healthIsCurrent && health!.Authenticated && health.HasRecentAuthentication(now);
+        var usable = _dialer.IsRunning
+            && health?.IsConnectedFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true;
         HealthTextBlock.Text = _dialer.IsRunning
             ? health == null ? "核心运行中，等待健康状态。" : "核心状态：" + health.ToDisplayText()
             : "认证核心未运行。";
-        if (usable && health!.Authenticated && health.HasRecentAuthentication(now))
+        if (usable)
         {
             RecordHealthyConnection(now);
             UpdateStatus("已连接");
@@ -222,6 +223,15 @@ public partial class MainWindow : Window
             _consecutiveUnhealthyChecks = 0;
         }
         if (DetailsOverlay.Visibility == Visibility.Visible) RefreshDetails();
+    }
+
+    private async Task RefreshHealthSafelyAsync()
+    {
+        if (_refreshingHealth || _disposed) return;
+        _refreshingHealth = true;
+        try { await RefreshHealthAsync(); }
+        catch (Exception ex) { AppendLog("刷新健康状态失败：" + ex.Message); }
+        finally { _refreshingHealth = false; }
     }
 
     private void RecordConnectionLoss(DateTimeOffset now, string reason)
@@ -327,12 +337,23 @@ public partial class MainWindow : Window
 
     private void RefreshSpeed()
     {
-        if (!IsVisible || HomePage.Visibility != Visibility.Visible) { _speedSampler.Reset(); return; }
         var sample = _speedSampler.Sample();
         DownloadSpeedText.Text = sample == null ? "-- KB/s" : NetworkSpeedSampler.Format(sample.Value.Download);
         UploadSpeedText.Text = sample == null ? "-- KB/s" : NetworkSpeedSampler.Format(sample.Value.Upload);
         DownloadLine.Points = _speedSampler.Points(true, Math.Max(1, SpeedChart.ActualWidth), Math.Max(1, SpeedChart.ActualHeight));
         UploadLine.Points = _speedSampler.Points(false, Math.Max(1, SpeedChart.ActualWidth), Math.Max(1, SpeedChart.ActualHeight));
+    }
+
+    private void UpdateSpeedSampling()
+    {
+        var shouldRun = !_disposed && IsVisible && HomePage.Visibility == Visibility.Visible;
+        if (shouldRun)
+        {
+            if (!_speedTimer.IsEnabled) _speedTimer.Start();
+            return;
+        }
+        _speedTimer.Stop();
+        _speedSampler.Reset();
     }
 
     private void ManageAccountsButton_Click(object sender, RoutedEventArgs e) => ShowAccounts();
@@ -350,7 +371,7 @@ public partial class MainWindow : Window
 
     private void RefreshAccounts()
     {
-        ClientLog.SetSecrets(_config.Accounts.SelectMany(a => new[] { a.UserName, PasswordProtector.Unprotect(a.ProtectedPassword) }));
+        RefreshLogSecretsIfNeeded();
         AccountSummaryText.Text = _config.CurrentAccount?.DisplayName ?? "尚未配置账户";
         AccountSummaryText.ToolTip = _config.CurrentAccount?.DisplayName;
         AccountList.ItemsSource = _config.Accounts.Select(a => new AccountRow(a.Id, a.DisplayName,
@@ -358,6 +379,14 @@ public partial class MainWindow : Window
             _editingAccounts, a.Id == _config.SelectedAccountId ? Color("SoftGreen") : System.Windows.Media.Brushes.White,
             a.Id == _config.SelectedAccountId ? Color("Green") : System.Windows.Media.Brushes.Transparent)).ToList();
         AccountHint.Text = _config.Accounts.Count == 0 ? "还没有账户，点击右上角 ＋ 添加" : "点击账号即可切换当前使用的校园网账户";
+    }
+
+    private void RefreshLogSecretsIfNeeded()
+    {
+        var fingerprint = string.Join("\u001f", _config.Accounts.Select(a => $"{a.Id}\u001e{a.UserName}\u001e{a.ProtectedPassword}"));
+        if (_secretFingerprint == fingerprint) return;
+        ClientLog.SetSecrets(_config.Accounts.SelectMany(a => new[] { a.UserName, PasswordProtector.Unprotect(a.ProtectedPassword) }));
+        _secretFingerprint = fingerprint;
     }
 
     private void ShowAccountList()
@@ -492,6 +521,7 @@ public partial class MainWindow : Window
         HomeNavButton.Foreground = Color(page == HomePage ? "Coral" : "Muted");
         LogsNavButton.Foreground = Color(page == LogsPage ? "Coral" : "Muted");
         SettingsNavButton.Foreground = Color(page == SettingsPage ? "Coral" : "Muted");
+        UpdateSpeedSampling();
     }
 
     private void OpenLogsButton_Click(object sender, RoutedEventArgs e)

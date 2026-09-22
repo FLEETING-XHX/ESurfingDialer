@@ -32,7 +32,7 @@ class Client(private val options: Options) : Runnable {
     var tick: Long = 0
 
     override fun run() {
-        HealthStatus.clientThreadAlive = true
+        HealthStatus.updateClientThreadAlive(true)
         logger.info("APPLICATION_STARTED")
         try {
             while (isRunning) {
@@ -50,7 +50,7 @@ class Client(private val options: Options) : Runnable {
                 }
             }
         } finally {
-            HealthStatus.clientThreadAlive = false
+            HealthStatus.updateClientThreadAlive(false)
             HealthStatus.write()
             logger.warn("CLIENT_THREAD_EXITED")
         }
@@ -59,22 +59,21 @@ class Client(private val options: Options) : Runnable {
     private fun runClientIteration() {
         if (session != null && HealthStatus.authenticated
             && !States.forceAuthorization && States.networkStatus != IS_REDIRECTS_FOUND_IP) {
-            maybeHeartbeat()
-            sleep(500)
+            waitForHeartbeatOrRecovery()
             return
         }
         when {
             States.networkStatus == DEFAULT -> {
-                sleep(1000)
+                CoreSignals.waitForClient(1000)
             }
 
             States.networkStatus == REQUEST_ERROR -> {
-                sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
+                CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
             }
 
             States.networkStatus == IS_REDIRECTS_NOT_FOUND_IP -> {
                 HealthStatus.markError("portal redirect missing user/ac ip")
-                sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
+                CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
             }
 
             States.forceAuthorization || States.networkStatus == IS_REDIRECTS_FOUND_IP -> {
@@ -83,11 +82,18 @@ class Client(private val options: Options) : Runnable {
 
             States.networkStatus == SUCCESS -> {
                 if (session != null && HealthStatus.authenticated) {
-                    maybeHeartbeat()
+                    waitForHeartbeatOrRecovery()
+                } else {
+                    CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
                 }
-                sleep(500)
             }
         }
+    }
+
+    private fun waitForHeartbeatOrRecovery() {
+        val remaining = keepRetrySeconds * 1000 - (System.currentTimeMillis() - tick)
+        if (remaining <= 0) maybeHeartbeat()
+        else CoreSignals.waitForClient(remaining)
     }
 
     private fun maybeHeartbeat() {
@@ -107,7 +113,7 @@ class Client(private val options: Options) : Runnable {
             if (failures >= RuntimeConfig.heartbeatFailureThreshold) {
                 resetSessionState("heartbeat failure threshold reached", countAbnormalRecovery = true)
                 States.forceAuthorization = true
-                States.networkStatus = DEFAULT
+                States.updateNetworkStatus(DEFAULT)
             } else {
                 keepRetrySeconds = (failures * 5L).coerceAtMost(30)
             }
@@ -149,12 +155,12 @@ class Client(private val options: Options) : Runnable {
             HealthStatus.markError("login response was not confirmed by keep heartbeat")
             logger.warn("LOGIN_NOT_CONFIRMED")
             resetSessionState("login not confirmed", countAbnormalRecovery = true)
-            States.networkStatus = DEFAULT
+            States.updateNetworkStatus(DEFAULT)
             sleep(nextLoginRetrySeconds() * 1000)
             return
         }
         States.forceAuthorization = false
-        States.networkStatus = SUCCESS
+        States.updateNetworkStatus(SUCCESS)
         loginFailures = 0
         abnormalRecoveries = 0
         tick = System.currentTimeMillis()

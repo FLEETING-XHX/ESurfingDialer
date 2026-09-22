@@ -4,8 +4,12 @@ public static class EnhancedConnectionPolicy
 {
     public static readonly TimeSpan EnhancedHealthCheckInterval = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan ConservativeHealthCheckInterval = TimeSpan.FromSeconds(10);
-    public static readonly TimeSpan EnhancedHealthSnapshotMaxAge = TimeSpan.FromSeconds(12);
-    public static readonly TimeSpan ConservativeHealthSnapshotMaxAge = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan EnhancedHealthSnapshotMaxAge = TimeSpan.FromSeconds(40);
+    public static readonly TimeSpan ConservativeHealthSnapshotMaxAge = TimeSpan.FromSeconds(75);
+    public const int EnhancedCoreNetworkCheckSeconds = 5;
+    public const int ConservativeCoreNetworkCheckSeconds = 20;
+    public const int EnhancedCoreHealthWriteSeconds = 15;
+    public const int ConservativeCoreHealthWriteSeconds = 30;
     public static readonly TimeSpan EnhancedStartupGrace = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan AuthenticationRecoveryGrace = TimeSpan.FromSeconds(45);
     public const int ConsecutiveUnhealthyChecksBeforeRecovery = 2;
@@ -16,6 +20,12 @@ public static class EnhancedConnectionPolicy
 
     public static TimeSpan HealthSnapshotMaxAge(bool enhanced) =>
         enhanced ? EnhancedHealthSnapshotMaxAge : ConservativeHealthSnapshotMaxAge;
+
+    public static int CoreNetworkCheckSeconds(bool enhanced) =>
+        enhanced ? EnhancedCoreNetworkCheckSeconds : ConservativeCoreNetworkCheckSeconds;
+
+    public static int CoreHealthWriteSeconds(bool enhanced) =>
+        enhanced ? EnhancedCoreHealthWriteSeconds : ConservativeCoreHealthWriteSeconds;
 
     public static TimeSpan RecoveryCooldown(int recoveryAttempt)
     {
@@ -31,10 +41,10 @@ public static class EnhancedConnectionPolicy
             return "认证线程未运行";
         if (!health.NetworkCheckThreadAlive)
             return "网络检测线程未运行";
-        if (!health.HasRecentAuthentication(now))
-            return "认证心跳长时间未确认";
         if (health.Authenticated)
             return null;
+        if (!health.HasRecentAuthentication(now))
+            return "认证心跳长时间未确认";
 
         var lastAuthentication = Math.Max(health.LastLoginSuccessAt, health.LastHeartbeatSuccessAt);
         var unauthenticatedFor = lastAuthentication > 0

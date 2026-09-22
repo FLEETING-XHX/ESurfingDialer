@@ -9,7 +9,7 @@
 
 适合直接安装在 Windows 电脑上。
 
-[下载 Windows 客户端 v2.1](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.1/ESurfingDialer-Lite-v2.1-Setup.exe)
+[下载 Windows 客户端 v2.2](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.2/ESurfingDialer-Windows-v2.2-Setup.exe)
 
 
 
@@ -17,7 +17,7 @@
 
 适合部署在 iStoreOS / OpenWrt 软路由上。
 
-[下载 Docker v1.3 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v1.3/ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip)
+[下载 Docker v1.3 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v1.3/ESurfingDialer-Docker-v1.3.zip)
 
 [查看 Docker 安装教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)
 

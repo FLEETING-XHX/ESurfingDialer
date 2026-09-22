@@ -18,6 +18,15 @@ public sealed class HealthSnapshot
     [JsonPropertyName("authenticated")]
     public bool Authenticated { get; set; }
 
+    [JsonPropertyName("enhancedConnection")]
+    public bool EnhancedConnection { get; set; }
+
+    [JsonPropertyName("networkCheckIntervalSeconds")]
+    public int NetworkCheckIntervalSeconds { get; set; }
+
+    [JsonPropertyName("healthWriteIntervalSeconds")]
+    public int HealthWriteIntervalSeconds { get; set; }
+
     [JsonPropertyName("lastUpdatedAt")]
     public long LastUpdatedAt { get; set; }
 
@@ -43,6 +52,9 @@ public sealed class HealthSnapshot
         return ProcessAlive && LastUpdatedAt >= startedAt.ToUnixTimeSeconds()
             && age >= 0 && age <= maximumAgeSeconds;
     }
+
+    public bool IsConnectedFor(DateTimeOffset startedAt, DateTimeOffset now, TimeSpan? maximumAge = null) =>
+        Authenticated && IsCurrentFor(startedAt, now, maximumAge);
 
     public bool HasRecentAuthentication(DateTimeOffset now) =>
         now.ToUnixTimeSeconds() - Math.Max(LastLoginSuccessAt, LastHeartbeatSuccessAt) is >= 0 and <= 600;

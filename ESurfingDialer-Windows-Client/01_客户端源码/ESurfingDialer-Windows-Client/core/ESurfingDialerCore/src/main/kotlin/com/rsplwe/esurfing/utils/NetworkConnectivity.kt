@@ -4,10 +4,11 @@ import cn.yescallop.fluenturi.Uri
 import com.rsplwe.esurfing.Constants
 import com.rsplwe.esurfing.HealthStatus
 import com.rsplwe.esurfing.RuntimeConfig
-import com.rsplwe.esurfing.network.createHttpClient
+import com.rsplwe.esurfing.network.createProbeHttpClient
 import okhttp3.Request
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 
 enum class ConnectivityStatus {
     SUCCESS,
@@ -24,13 +25,19 @@ data class NetworkConnectivityResult(
     val message: String = "ok"
 )
 
-private val probeClient = createHttpClient(false)
+private val probeClient = createProbeHttpClient(RuntimeConfig.networkProbeTimeoutSeconds)
 
-fun checkConnectivity(): NetworkConnectivityResult {
+fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls): NetworkConnectivityResult {
     val client = probeClient
     val errors = mutableListOf<String>()
+    val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(RuntimeConfig.networkProbeBudgetSeconds)
 
-    for (url in RuntimeConfig.networkCheckUrls) {
+    for (url in urls) {
+        val remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
+        if (remainingMillis <= 0) {
+            errors += "network probe budget exhausted"
+            break
+        }
         val request = Request.Builder()
             .removeHeader("User-Agent")
             .addHeader("User-Agent", Constants.USER_AGENT)
@@ -39,9 +46,14 @@ fun checkConnectivity(): NetworkConnectivityResult {
             .build()
 
         try {
-            val (responseCode, location, body) = client.newCall(request).execute().use { response ->
+            val call = client.newCall(request)
+            call.timeout().timeout(
+                minOf(remainingMillis, TimeUnit.SECONDS.toMillis(RuntimeConfig.networkProbeTimeoutSeconds)),
+                TimeUnit.MILLISECONDS,
+            )
+            val (responseCode, location, body) = call.execute().use { response ->
                 Triple(response.code, response.headers["Location"],
-                    if (response.code == 200) response.body?.string().orEmpty() else "")
+                    if (response.code == 200) response.peekBody(RuntimeConfig.networkProbeBodyLimitBytes).string() else "")
             }
 
             when (responseCode) {
@@ -58,7 +70,7 @@ fun checkConnectivity(): NetworkConnectivityResult {
 
                 else -> errors += "$url returned HTTP $responseCode"
             }
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
             errors += "$url: ${e.localizedMessage ?: e::class.java.simpleName}"
         }
     }
@@ -110,7 +122,7 @@ private fun parseQueryParams(url: String): Map<String, String> {
     return try {
         Uri.from(url).queryParameters().mapKeys { it.key.lowercase() }
             .mapValues { it.value.firstOrNull().orEmpty() }
-    } catch (_: Throwable) {
+    } catch (_: Exception) {
         val query = url.substringAfter("?", "")
         query.split("&").mapNotNull {
             val key = it.substringBefore("=", "").takeIf { value -> value.isNotBlank() } ?: return@mapNotNull null

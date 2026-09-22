@@ -49,6 +49,10 @@ internal static class Program
         Check(!health.HasRecentAuthentication(now), "Stale heartbeat rejected");
         Check(EnhancedConnectionPolicy.HealthCheckInterval(true) < EnhancedConnectionPolicy.HealthCheckInterval(false), "Enhanced health checks are faster");
         Check(EnhancedConnectionPolicy.HealthCheckInterval(true) == TimeSpan.FromSeconds(5), "Enhanced health polling stays lightweight");
+        Check(EnhancedConnectionPolicy.CoreNetworkCheckSeconds(true) == 5
+              && EnhancedConnectionPolicy.CoreNetworkCheckSeconds(false) == 20, "Core network polling follows enhanced mode");
+        Check(EnhancedConnectionPolicy.CoreHealthWriteSeconds(true) == 15
+              && EnhancedConnectionPolicy.CoreHealthWriteSeconds(false) == 30, "Core health writes use a conservative cadence");
         Check(EnhancedConnectionPolicy.RecoveryCooldown(1) == TimeSpan.FromSeconds(30)
               && EnhancedConnectionPolicy.RecoveryCooldown(2) == TimeSpan.FromSeconds(60)
               && EnhancedConnectionPolicy.RecoveryCooldown(3) == TimeSpan.FromSeconds(120), "Enhanced recovery uses bounded backoff");
@@ -59,11 +63,19 @@ internal static class Program
         };
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null, "Healthy core does not trigger enhanced recovery");
         healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-11).ToUnixTimeSeconds();
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证心跳长时间未确认", "Stale authentication heartbeat triggers enhanced recovery");
+        Check(healthySnapshot.IsConnectedFor(now.AddMinutes(-1), now, EnhancedConnectionPolicy.EnhancedHealthSnapshotMaxAge), "Authenticated current health stays connected when heartbeat timestamp is stale");
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null, "Authenticated core remains connected when heartbeat timestamp is stale");
         healthySnapshot.LastHeartbeatSuccessAt = now.ToUnixTimeSeconds();
         healthySnapshot.Authenticated = false;
         healthySnapshot.LastHeartbeatSuccessAt = now.AddSeconds(-46).ToUnixTimeSeconds();
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证状态持续丢失", "Sustained authentication loss triggers enhanced recovery");
+        healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-11).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证心跳长时间未确认", "Unauthenticated core with stale heartbeat triggers enhanced recovery");
+        ClientLog.SetSecrets(new[] { "old-regression-secret" });
+        Check(ClientLog.Redact("old-regression-secret") == "[REDACTED]", "Current log secret is redacted");
+        ClientLog.SetSecrets(new[] { "new-regression-secret" });
+        Check(ClientLog.Redact("old-regression-secret") == "old-regression-secret"
+              && ClientLog.Redact("new-regression-secret") == "[REDACTED]", "Log secret cache replaces stale values");
 
         var app = new System.Windows.Application();
         var window = new MainWindow(previewMode: true);
@@ -83,6 +95,16 @@ internal static class Program
             T Node<T>(string name) => (T)window.FindName(name);
             var liveConfig = (ClientConfig)typeof(MainWindow).GetField("_config", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
             var healthTimer = (System.Windows.Threading.DispatcherTimer)typeof(MainWindow).GetField("_healthTimer", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            var speedTimer = (System.Windows.Threading.DispatcherTimer)typeof(MainWindow).GetField("_speedTimer", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            Check(!speedTimer.IsEnabled, "Speed sampling stays stopped while the window is hidden");
+            window.Show();
+            Call("ShowPage", Node<UIElement>("HomePage"));
+            Check(speedTimer.IsEnabled, "Speed sampling starts on the visible home page");
+            Call("ShowPage", Node<UIElement>("LogsPage"));
+            Check(!speedTimer.IsEnabled, "Speed sampling stops away from the home page");
+            Call("ShowPage", Node<UIElement>("HomePage"));
+            window.Hide();
+            Check(!speedTimer.IsEnabled, "Speed sampling stops again when the window is hidden");
             Check(healthTimer.Interval == EnhancedConnectionPolicy.EnhancedHealthCheckInterval, "Enhanced mode configures fast health polling");
             liveConfig.EnhancedConnection = false;
             Call("ApplySettings");
@@ -253,6 +275,12 @@ internal static class Program
         {
             core.StartAsync(config, PasswordProtector.Unprotect(config.ProtectedPassword), _ => { }).GetAwaiter().GetResult();
             Wait(() => core.IsRunning && HealthSnapshot.Load()?.IsCurrentFor(core.StartedAt, DateTimeOffset.UtcNow) == true, "Core startup creates fresh health");
+            core.EnhancedConnection = false;
+            Wait(() => HealthSnapshot.Load() is { EnhancedConnection: false, NetworkCheckIntervalSeconds: 20, HealthWriteIntervalSeconds: 30 },
+                "Running core switches to conservative cadence without restart");
+            core.EnhancedConnection = true;
+            Wait(() => HealthSnapshot.Load() is { EnhancedConnection: true, NetworkCheckIntervalSeconds: 5, HealthWriteIntervalSeconds: 15 },
+                "Running core restores enhanced cadence without restart");
             var first = core.StartedAt;
             Process().Kill(entireProcessTree: true);
             Wait(() => core.IsRunning && core.StartedAt > first, "Enhanced connection restarts a crashed core");

@@ -6,10 +6,13 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.AtomicMoveNotSupportedException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 object HealthStatus {
     private val logger: Logger = Logger.getLogger(HealthStatus::class.java)
+    private val writeSignal = Semaphore(0)
 
     @Volatile var clientThreadAlive: Boolean = false
     @Volatile var networkCheckThreadAlive: Boolean = false
@@ -26,10 +29,32 @@ object HealthStatus {
         thread(start = true, name = "health-reporter", isDaemon = false) {
             while (States.isRunning) {
                 write()
-                Thread.sleep(RuntimeConfig.healthWriteIntervalSeconds * 1000)
+                try {
+                    writeSignal.tryAcquire(RuntimeConfig.healthWriteIntervalSeconds, TimeUnit.SECONDS)
+                    writeSignal.drainPermits()
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
             }
             write()
         }
+    }
+
+    fun requestWrite() {
+        if (writeSignal.availablePermits() == 0) writeSignal.release()
+    }
+
+    fun updateClientThreadAlive(value: Boolean) {
+        if (clientThreadAlive == value) return
+        clientThreadAlive = value
+        requestWrite()
+    }
+
+    fun updateNetworkCheckThreadAlive(value: Boolean) {
+        if (networkCheckThreadAlive == value) return
+        networkCheckThreadAlive = value
+        requestWrite()
     }
 
     @Synchronized fun write() {
@@ -51,6 +76,9 @@ object HealthStatus {
                   "clientThreadAlive": $clientThreadAlive,
                   "networkCheckThreadAlive": $networkCheckThreadAlive,
                   "authenticated": $authenticated,
+                  "enhancedConnection": ${RuntimeConfig.isEnhancedConnectionEnabled()},
+                  "networkCheckIntervalSeconds": ${RuntimeConfig.networkCheckIntervalSeconds},
+                  "healthWriteIntervalSeconds": ${RuntimeConfig.healthWriteIntervalSeconds},
                   "lastUpdatedAt": $now,
                   "lastNetworkCheckAt": $lastNetworkCheckAt,
                   "lastLoginSuccessAt": $lastLoginSuccessAt,
@@ -83,6 +111,7 @@ object HealthStatus {
         lastHeartbeatSuccessAt = now()
         consecutiveHeartbeatFailures.set(0)
         lastError = null
+        requestWrite()
     }
 
     fun markHeartbeatSuccess() {
@@ -90,16 +119,21 @@ object HealthStatus {
         lastHeartbeatSuccessAt = now()
         consecutiveHeartbeatFailures.set(0)
         lastError = null
+        requestWrite()
     }
 
     fun markError(message: String?) {
-        lastError = message?.takeIf { it.isNotBlank() }
+        val normalized = message?.takeIf { it.isNotBlank() }
+        if (lastError == normalized) return
+        lastError = normalized
+        requestWrite()
     }
 
     fun resetSession() {
         authenticated = false
         consecutiveHeartbeatFailures.set(0)
         consecutivePortalDetections.set(0)
+        requestWrite()
     }
 
     private fun now(): Long = System.currentTimeMillis() / 1000

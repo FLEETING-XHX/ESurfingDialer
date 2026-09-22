@@ -13,7 +13,21 @@ public sealed class DialerCoreProcess
     private int _crashStreak;
     private DateTimeOffset _startedAt;
     public event Action<string>? RecoveryMessage;
-    public bool EnhancedConnection { get { lock (_gate) return _enhanced; } set { lock (_gate) _enhanced = value; } }
+    public bool EnhancedConnection
+    {
+        get { lock (_gate) return _enhanced; }
+        set
+        {
+            Process? process;
+            lock (_gate)
+            {
+                if (_enhanced == value) return;
+                _enhanced = value;
+                process = _process is { HasExited: false } ? _process : null;
+            }
+            if (process != null) TrySendControl(process, value ? "enhanced on" : "enhanced off");
+        }
+    }
     public bool IsRequested { get { lock (_gate) return _requested; } }
     public bool IsRunning { get { lock (_gate) return _process is { HasExited: false }; } }
     public DateTimeOffset StartedAt { get { lock (_gate) return _startedAt; } }
@@ -49,11 +63,15 @@ public sealed class DialerCoreProcess
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, CreateNoWindow = true,
             WorkingDirectory = AppContext.BaseDirectory
         };
-        foreach (var arg in new[] { "-jar", AppPaths.CoreJar, "-u", user, "-p", password, "-d", "--control-stdin" })
+        foreach (var arg in new[] { "-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-Xms16m", "-jar", AppPaths.CoreJar, "-u", user, "-p", password, "-d", "--control-stdin" })
             info.ArgumentList.Add(arg);
         info.Environment["STATE_DIR"] = AppPaths.DataDirectory;
         info.Environment["AUTO_REAUTH_ENABLED"] = "0";
-        info.Environment["HEALTH_WRITE_INTERVAL_SECONDS"] = "5";
+        info.Environment["ENHANCED_CONNECTION_ENABLED"] = _enhanced ? "1" : "0";
+        info.Environment["ENHANCED_NETWORK_CHECK_INTERVAL_SECONDS"] = EnhancedConnectionPolicy.EnhancedCoreNetworkCheckSeconds.ToString();
+        info.Environment["CONSERVATIVE_NETWORK_CHECK_INTERVAL_SECONDS"] = EnhancedConnectionPolicy.ConservativeCoreNetworkCheckSeconds.ToString();
+        info.Environment["ENHANCED_HEALTH_WRITE_INTERVAL_SECONDS"] = EnhancedConnectionPolicy.EnhancedCoreHealthWriteSeconds.ToString();
+        info.Environment["CONSERVATIVE_HEALTH_WRITE_INTERVAL_SECONDS"] = EnhancedConnectionPolicy.ConservativeCoreHealthWriteSeconds.ToString();
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
         process.OutputDataReceived += (_, e) => { if (e.Data != null) ClientLog.Write(AppPaths.CoreLogFile, e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data != null) ClientLog.Write(AppPaths.CoreLogFile, e.Data); };
@@ -90,7 +108,7 @@ public sealed class DialerCoreProcess
             {
                 if (!process.HasExited)
                 {
-                    try { process.StandardInput.WriteLine("stop"); process.StandardInput.Flush(); } catch (IOException) { }
+                    TrySendControl(process, "stop");
                     if (!process.WaitForExit(4000)) process.Kill(entireProcessTree: true);
                     if (!process.WaitForExit(2000))
                         throw new InvalidOperationException("认证核心仍在退出，请稍后再试。");
@@ -100,6 +118,19 @@ public sealed class DialerCoreProcess
             }
             catch (InvalidOperationException) when (process.HasExited) { _process = null; process.Dispose(); }
         }
+    }
+
+    private static void TrySendControl(Process process, string command)
+    {
+        try
+        {
+            if (process.HasExited) return;
+            process.StandardInput.WriteLine(command);
+            process.StandardInput.Flush();
+        }
+        catch (IOException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private async Task HandleExitAsync(Process exited, int generation, string user, string password, Action<string> log)
