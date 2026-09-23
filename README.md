@@ -11,7 +11,7 @@
 
 [下载 Windows 客户端 v2.2](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.2/ESurfingDialer-Windows-v2.2-Setup.exe)
 
-> **Warning：**Windows 客户端 v2.2 尚未经真实网络环境的长期测试，仅建议用于尝鲜与反馈；请保留现有可用的认证方式。
+> **已知问题：**Windows 客户端 v2.2 存在可能导致无法完成校园网认证的 Bug，暂不建议下载或使用；已安装用户请保留或恢复原有可用的认证方式。
 
 
 
