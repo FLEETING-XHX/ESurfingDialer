@@ -39,7 +39,8 @@ ESurfingDialer-Docker/                  ← 当前 Git 仓库根目录
 │  ├─ WINDOWS-AUTH-SESSION-ISSUE.md       反馈、日志证据和未确认假设
 │  ├─ UI-AND-RECOVERY.md                 2.0 UI/恢复历史记录
 │  ├─ C-REFERENCE-REVIEW.md              C 附件对照、响应修复及验证
-│  └─ RECOVERY-REPAIR-REPORT.md           切网、唤醒、任务取消和原生边界
+│  ├─ RECOVERY-REPAIR-REPORT.md           切网、唤醒、任务取消和原生边界
+│  └─ V2.3BETA-RELEASE.md                 测试版更新、下载入口与验证边界
 ├─ ESurfingDialer-Windows-Client/
 │  ├─ 00_最终安装包/                     历史安装包目录，不随源码改动更新
 │  └─ 01_客户端源码/ESurfingDialer-Windows-Client/

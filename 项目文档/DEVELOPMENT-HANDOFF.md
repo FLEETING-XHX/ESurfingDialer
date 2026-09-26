@@ -12,7 +12,7 @@
 | Windows | v2.3beta 预发布测试包；v2.2 有认证失败反馈 |
 | Docker | v1.3，本轮未改认证实现 |
 | 打包与发布 | 用户已授权；v2.3beta 安装包已生成，GitHub 发布结果见 REL-23B 交接 |
-| 当前进行中的文件认领 | REL-23B：Codex 提交/推送与 GitHub 预发布；现场算法/实际校园网验证仍待证据 |
+| 当前进行中的文件认领 | 无；REL-23B 已完成，现场算法/实际校园网验证仍待证据 |
 
 ## 已完成任务
 
@@ -109,7 +109,7 @@ REF-01 已完成的文件范围：Windows 核心 `Client.kt`、`PortalConfigurat
 - 现场限制：仅模拟恢复回调，没有实际系统休眠，没有校园网真实登录。UA/格式/算法提供者、实际切网与长期运行仍待现场数据；第 5 项保持未完成。
 - Git/交付：修复前检查点 c99dce5 保留；REC-02 后续改动未提交。没有推送、修改参考 C/Docker 协议或生成安装包。
 
-## 2026-09-26 · REL-23B · Codex 进行中
+## 2026-09-26 · REL-23B · Codex 已完成
 
 - 用户明确授权：打包 v2.3beta、同步提交并推送代码、上传 GitHub；README 划掉旧 Windows 下载入口，增加红色 Warning/警告图标，只引导 Releases。此授权替代此前暂不打包要求。
 - 文件认领：根 README、assets/windows-warning.svg；Windows 工程版本元数据、installer、Build-Installer.ps1、resources/README_TEST.txt；项目说明、协作规则、路线图、修复计划和本交接记录。保留并提交 REC-02 已完成修复；外部 C 参考源码不纳入。
@@ -122,6 +122,19 @@ REF-01 已完成的文件范围：Windows 核心 `Client.kt`、`PortalConfigurat
 - `scripts/Build-Installer.ps1` 成功：核心 shadowJar、本机 Java 21 运行时、win-x64 自包含发布与 Inno Setup 编译完成。发布脚本增加 .NET publish 失败检查，避免失败后继续打包。
 - Release 客户端回归编译 0 警告、0 错误；使用包内的客户端 DLL、client.jar 和 Java runtime 执行回归，102 项检查通过。该次日志导出时未包含可选 health 快照，检查数较此前 103 少 1，未出现失败。
 - 生成的 EXE 使用 ESURFING_CLIENT_HOME 指定独立空配置目录启动，4 秒后仍存活且写入启动日志；仅结束本次测试进程。没有覆盖已安装客户端或用户配置；未验证安装向导、升级和卸载。
-- README 保留纵向 Windows/Docker 布局；旧 Windows 下载入口划线并移除安装包直连；本地 SVG 显示红色 Warning，增加 ⚠️，引导 v2.3beta Releases 页面。
+- README 保留纵向 Windows/Docker 布局；旧 Windows 下载入口划线；v2.3beta 不提供安装包直连；本地 SVG 显示红色 Warning，增加 ⚠️，引导 v2.3beta Releases 页面。
 - 版本：客户端 NuGet Version=2.3.0-beta，InformationalVersion=2.3beta；安装器 AppVersion=2.3beta、数字文件版本2.3.0.0；原安装 AppId 保留。
 - 现场认证、算法兼容、实际切网/休眠及长期运行仍未验证；beta 不表示认证根因已修复。
+
+- REL-23B 文件范围补充：同步 Windows 源码 README 和历史对照/恢复记录的状态注释；新增本地安装包目录中的测试说明与校验和文本。不改变发布二进制或认证代码。
+
+### REL-23B 发布完成与接手
+
+- 发布基线：`53342155a82b43600ba496311bc0539a7f954eda`，已经推送 main；`v2.3beta` 标签指向该提交。本条及 README 状态补充属于后续文档同步，不改变安装包。
+- GitHub：[v2.3beta](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.3beta) 已公开，isDraft=false、isPrerelease=true；没有设为 Latest，Docker v1.3 的 Latest 状态保留。
+- 三个附件均上传：Windows 安装器、SHA256SUMS.txt、README_TEST.txt。GitHub 返回安装器大小157736890字节，SHA256 与本机一致。
+- 文档链接和 README Windows 区域检查通过；红色 SVG 的 Warning 文本、⚠️、旧入口划线与 Releases 链接已核对源码。GitHub 浏览器预览未获许可，没有进行网页视觉截图；不影响 CLI 上传与发布状态验证。
+- 本机安装包和文本保存在 `ESurfingDialer-Windows-Client/00_最终安装包/Windows客户端_v2.3beta/`。外部 C 附件保持本机未跟踪状态；没有改动 Docker 认证、历史包或现有安装配置。
+- 后续：使用测试包收集校园网登录、心跳、实际切网/休眠和长期运行证据；实际安装升级/卸载仍待测试。未知现场算法仍按 AUTH 计划第 5 项处理，不猜密钥。
+
+- 发布期间 GitHub README 有 4685304、2819c54、ae92fdc 三个并发编辑提交。同步前已 fetch/rebase，保留这些远端编辑，没有强制推送。对旧直连/emoji 的差异已向用户询问；当前先保留远端最新版本，beta 下载仍只引导 Releases。
