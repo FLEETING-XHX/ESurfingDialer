@@ -1,12 +1,12 @@
 # C 项目对照与本轮修复记录
 
-日期：2026-09-26。任务：REF-01。执行工具：Codex。适用于 Windows 2.3 开发源码，当时暂不打包；后续已按用户授权制作 v2.3beta，见 [测试版说明](V2.3BETA-RELEASE.md)。
+日期：2026-09-26。任务：REF-01。适用于 Windows 2.3 开发源码，当时暂不打包；后续已按用户授权制作 v2.3beta，见 [测试版说明](V2.3BETA-RELEASE.md)。
 
 ## 对照对象与范围
 
-用户提供的本地附件为 `ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)`。附件 [README](../ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)/README.md) 标注来源为 BadGhost520/ESurfingClient-CVersion，根 [LICENSE](../ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)/LICENSE) 为 Apache-2.0。本轮对照的是当前本地文件，没有联网核对它与上游 Release 的一致性，也没有编译、运行或修改参考程序。
+用户提供的本地附件为 `ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)`。附件 `README` 标注来源为 BadGhost520/ESurfingClient-CVersion，根 `LICENSE` 为 Apache-2.0。参考附件仅保存在本地，不随本仓库上传。本轮对照的是当前本地文件，没有联网核对它与上游 Release 的一致性，也没有编译、运行或修改参考程序。
 
-主要阅读 [DialerClient.c](../ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)/esurfingclient/main/src/DialerClient.c) 中的 `auth`、`init_session`、`load_cipher`、`get_ticket`、`login`、`heartbeat`，以及 [PlatformUtils.c](../ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)/esurfingclient/main/src/utils/PlatformUtils.c) 的 `xml_parser` 和 [CipherFactory.c](../ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)/esurfingclient/main/src/cipher/CipherFactory.c) 的算法分派。
+主要阅读 `DialerClient.c` 中的 `auth`、`init_session`、`load_cipher`、`get_ticket`、`login`、`heartbeat`，以及 `PlatformUtils.c` 的 `xml_parser` 和 `CipherFactory.c` 的算法分派。
 
 ## 已落实的修复
 
@@ -43,4 +43,4 @@ dotnet run --project tests/ClientRegression/ClientRegression.csproj --no-restore
 - Windows 回归通过：90 项检查，覆盖有时限的阶段宽限、旧进程/未来时间/未知阶段拒绝、线程死亡、过期健康、WPF、核心崩溃恢复、模式切换、手动停止和取消延迟恢复。截图在源码 `artifacts/reference-repair-ui/`。
 - HTTP 与协议用例使用本机模拟服务；原生加载使用可注入替身。没有真实校园网端到端验证，没有证明新算法已经兼容，也没有生成安装包、提交、推送或发布。
 
-接手方式见 [开发交接记录](DEVELOPMENT-HANDOFF.md)，现场证据需求见 [认证修复计划](AUTH-REPAIR-PLAN.md)。
+现场证据需求见 [认证修复计划](AUTH-REPAIR-PLAN.md)。

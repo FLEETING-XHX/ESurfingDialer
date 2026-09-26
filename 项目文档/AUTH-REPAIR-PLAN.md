@@ -1,8 +1,8 @@
 # Windows 认证修复计划（2026-09-26）
 
-依据：9 月 23 日 v2.1/v2.2 反馈及 `WINDOWS-AUTH-SESSION-ISSUE.md`。保留当前 Docker 稳定实现；Windows 的协议兼容改动先在本地验证，不直接发布。
+依据：9 月 23 日 v2.1/v2.2 反馈及 `WINDOWS-AUTH-SESSION-ISSUE.md`。保留当前 Docker 稳定实现；Windows 的协议兼容改动先在本地验证，再通过 v2.3beta 收集现场测试结果。
 
-开发入口与完整命令见 [项目说明](PROJECT-GUIDE.md)，当前交接状态见 [开发交接记录](DEVELOPMENT-HANDOFF.md)。下文构建命令的工作目录为 `ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client`。
+源码入口和打包方法见 [Windows 工程说明](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/README.md)，测试范围见 [v2.3beta 测试说明](V2.3BETA-RELEASE.md)。下文构建命令的工作目录为 `ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client`。
 
 | 顺序 | 问题与修复 | 验收条件 | 状态 |
 | --- | --- | --- | --- |
@@ -35,4 +35,4 @@
 
 第 5 项未完成：缺少故障校园网的受控 Algo-ID 与可验证测试向量，当前不能确定哪一个算法需要新增，更不能宣布 v2.1/v2.2 的真实认证故障已经完全解决。
 
-REC-02 的完整内容、资源边界及本机/现场验证区别见 [连接恢复与会话修复](RECOVERY-REPAIR-REPORT.md)。用户要求的修复前检查点为 c99dce5；本轮新修改尚未提交，没有推送或打包。
+REC-02 的完整内容、资源边界及本机/现场验证区别见 [连接恢复与会话修复](RECOVERY-REPAIR-REPORT.md)。修复前检查点为 c99dce5；后续修复已提交并纳入 v2.3beta 预发布测试包，实际版本以 GitHub 标签和 Releases 为准。

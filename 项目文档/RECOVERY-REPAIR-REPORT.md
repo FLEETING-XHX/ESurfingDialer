@@ -1,6 +1,6 @@
 # 连接恢复与原生会话边界修复
 
-日期：2026-09-26。任务：REC-02。执行工具：Codex。继续开发 Windows 2.3，当时暂不打包；后续已按用户授权制作 v2.3beta，见 [测试版说明](V2.3BETA-RELEASE.md)。
+日期：2026-09-26。任务：REC-02。继续开发 Windows 2.3，当时暂不打包；后续已按用户授权制作 v2.3beta，见 [测试版说明](V2.3BETA-RELEASE.md)。
 
 ## 修复前检查点
 
@@ -38,7 +38,7 @@ dotnet build app/ESurfingDialerLite/ESurfingDialerLite.csproj --no-restore
 dotnet run --project tests/ClientRegression/ClientRegression.csproj --no-restore -- artifacts/recovery-repair-ui --core
 ```
 
-核心最终离线构建成功，109 项认证检查、46 项恢复检查通过。客户端编译为 0 警告、0 错误；客户端最终 103 项回归通过，详细交接见 [开发交接记录](DEVELOPMENT-HANDOFF.md)。覆盖门户一致性、防抖、版本请求保留、原生使用/释放并发、重复/异常释放、有界格式头部、唤醒窗口、保守模式下立即重查、进程崩溃和手动停止。
+核心最终离线构建成功，109 项认证检查、46 项恢复检查通过。客户端编译为 0 警告、0 错误；客户端最终 103 项回归通过，测试版验证范围见 [v2.3beta 测试说明](V2.3BETA-RELEASE.md)。覆盖门户一致性、防抖、版本请求保留、原生使用/释放并发、重复/异常释放、有界格式头部、唤醒窗口、保守模式下立即重查、进程崩溃和手动停止。
 
 原生操作用可注入替身验证；网络与 Java 子进程用本机模拟 HTTP 服务验证。唤醒验证使用回调模拟和真实控制命令，没有令系统实际睡眠，也没有真实校园网登录测试。截图位于 Windows 源码 `artifacts/recovery-repair-ui/`，仅作验证产物。
 

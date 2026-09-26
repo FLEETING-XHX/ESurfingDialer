@@ -25,7 +25,7 @@
 
 ## 开发入口
 
-合并仓库的开发说明集中在[项目文档](../项目文档/)：[项目说明](../项目文档/PROJECT-GUIDE.md)、[未来开发方向](../项目文档/ROADMAP.md)、[认证修复计划](../项目文档/AUTH-REPAIR-PLAN.md) 与 [开发交接记录](../项目文档/DEVELOPMENT-HANDOFF.md)。zcode 和 Codex 共同开发时使用同一个合并仓库，按 [协作规则](../项目文档/协作规则.md) 交接；根目录 `AGENTS.md` 为 Codex 规则入口。
+后续计划和修复记录放在[项目文档](../项目文档/)中，可以查看[未来开发方向](../项目文档/ROADMAP.md)、[认证修复计划](../项目文档/AUTH-REPAIR-PLAN.md) 和 [v2.3beta 测试说明](../项目文档/V2.3BETA-RELEASE.md)。
 
 ## 致谢
 

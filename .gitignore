@@ -20,3 +20,9 @@ Desktop.ini
 .idea/
 *.user
 *.suo
+
+# Local development-tool guidance (keep files on this machine)
+/AGENTS.md
+/项目文档/PROJECT-GUIDE.md
+/项目文档/协作规则.md
+/项目文档/DEVELOPMENT-HANDOFF.md

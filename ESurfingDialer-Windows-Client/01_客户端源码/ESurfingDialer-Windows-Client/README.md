@@ -6,7 +6,6 @@
 v2.3beta 更新、下载与测试范围见 [测试版说明](../../../项目文档/V2.3BETA-RELEASE.md)；2.0 UI 历史见 [UI 与连接恢复历史记录](../../../项目文档/UI-AND-RECOVERY.md)。
 后续规划见 [未来开发方向](../../../项目文档/ROADMAP.md)。
 本次修复顺序、验证结果与待现场确认项见 [认证修复计划](../../../项目文档/AUTH-REPAIR-PLAN.md)。
-zcode 与 Codex 共同开发时，请先阅读根目录的 [项目说明](../../../项目文档/PROJECT-GUIDE.md)、[协作规则](../../../项目文档/协作规则.md) 和 [交接记录](../../../项目文档/DEVELOPMENT-HANDOFF.md)，以及根目录 [AGENTS.md](../../../AGENTS.md)。
 
 这是 ESurfingDialer 的 Windows 轻量客户端工程，用来替代臃肿的官方天翼校园客户端做测试。
 
