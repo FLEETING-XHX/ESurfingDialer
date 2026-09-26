@@ -9,9 +9,10 @@
 
 适合直接安装在 Windows 电脑上。
 
-~~下载 Windows 客户端 v2.2（暂时停用）~~
+~~[下载 Windows 客户端 v2.2](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.2/ESurfingDialer-Windows-v2.2-Setup.exe)~~
 
-> ![红色 Warning](assets/windows-warning.svg) ⚠️
+
+> ![红色 Warning](assets/windows-warning.svg) 
 >
 > Windows 客户端 v2.2 存在可能导致无法完成校园网认证的 Bug，暂不建议下载或使用；已安装用户请保留或恢复原有可用的认证方式。
 >
