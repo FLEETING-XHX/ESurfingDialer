@@ -16,7 +16,7 @@
 >
 > Windows 客户端 v2.2 存在可能导致无法完成校园网认证的 Bug，暂不建议下载或使用；已安装用户请保留或恢复原有可用的认证方式。
 >
-> **v2.3beta 现已提供测试**，请前往 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.3beta) 下载。该版本仍需真实校园网认证与稳定性验证，不能保证已解决所有认证问题。README 暂不提供 Windows 安装包下载直连。
+> **v2.3beta 现已提供测试**：请前往 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.3beta) 下载。该版本仍需真实校园网认证与稳定性验证，不能保证已解决所有认证问题。README 暂不提供 Windows 安装包下载直连。
 
 
 
@@ -32,7 +32,7 @@
 
 Docker 版本提供离线镜像包，软路由没有公网时也可以完成部署。
 
-> **稳定性记录：**Docker v1.3 已连续测试 14 天，期间未出现断网情况。
+> **稳定性记录**：Docker v1.3 已连续测试 14 天，期间未出现断网情况。
 
 ## 版本说明
 
