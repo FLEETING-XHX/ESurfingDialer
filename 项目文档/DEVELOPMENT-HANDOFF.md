@@ -137,4 +137,4 @@ REF-01 已完成的文件范围：Windows 核心 `Client.kt`、`PortalConfigurat
 - 本机安装包和文本保存在 `ESurfingDialer-Windows-Client/00_最终安装包/Windows客户端_v2.3beta/`。外部 C 附件保持本机未跟踪状态；没有改动 Docker 认证、历史包或现有安装配置。
 - 后续：使用测试包收集校园网登录、心跳、实际切网/休眠和长期运行证据；实际安装升级/卸载仍待测试。未知现场算法仍按 AUTH 计划第 5 项处理，不猜密钥。
 
-- 发布期间 GitHub README 有 4685304、2819c54、ae92fdc 三个并发编辑提交。同步前已 fetch/rebase，保留这些远端编辑，没有强制推送。对旧直连/emoji 的差异已向用户询问；当前先保留远端最新版本，beta 下载仍只引导 Releases。
+- 发布期间 GitHub README 有 4685304、2819c54、ae92fdc 三个并发编辑提交。同步前已 fetch/rebase，保留这些远端编辑，没有强制推送。对旧直连/emoji 的差异已向用户询问，用户明确选择“保留 GitHub 最新编辑”；最终保留这些编辑，beta 下载仍只引导 Releases。
