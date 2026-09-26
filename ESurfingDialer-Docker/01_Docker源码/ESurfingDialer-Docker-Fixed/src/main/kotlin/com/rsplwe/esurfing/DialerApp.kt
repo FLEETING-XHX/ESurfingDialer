@@ -68,17 +68,8 @@ object DialerApp {
                                 States.networkStatus = ConnectivityStatus.SUCCESS
                             }
 
-                            ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP -> {
-                                HealthStatus.markError("No parameter detected in url")
-                                logger.error("No parameter detected in url.")
-                                if (!HealthStatus.authenticated) {
-                                    States.networkStatus = networkStatus.status
-                                }
-                            }
-
-                            ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
-                                States.userIp = networkStatus.userIp!!
-                                States.acIp = networkStatus.acIp!!
+                            ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
+                                rememberPortal(networkStatus)
                                 HealthStatus.markNetworkCheckObserved()
                                 if (HealthStatus.authenticated) {
                                     val authAge = HealthStatus.secondsSinceLastAuthSuccess()
@@ -158,13 +149,10 @@ object DialerApp {
                     if (isRunning) {
                         isRunning = false
                     }
-                    if (client.session != null) {
-                        client.term()
-                    }
+                    client.shutdown()
                     println("Shutting down...")
-                } catch (e: InterruptedException) {
-                    currentThread().interrupt()
-                    e.printStackTrace()
+                } catch (e: Exception) {
+                    logger.warn("SHUTDOWN_SESSION_FAILED")
                 }
             }
         })

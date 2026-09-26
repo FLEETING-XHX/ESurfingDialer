@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-26 v1.4.0-beta.1 (local testing only)
+
+- Validate authentication XML fields and heartbeat intervals; escape dynamic request fields and bound response sizes.
+- Discover portal auth/ticket endpoints through bounded redirects, retaining redirects without initial IP parameters.
+- Freeze active session endpoints, IP and device headers; serialize session use/free and clean up invalid initialization.
+- Add offline authentication regression checks and an isolated amd64 beta package with ESurfingDialer-Beta.
+- Keep Android32 native libraries, UA, persistent identity and recovery/scheduler defaults unchanged. Actual container/campus validation is pending.
+
 # 2026-09-07 v1.3 reauth prediction
 
 - Added an automatic reauthentication planner that learns from successful logins and keeps a predicted next reauth time on disk.

@@ -26,3 +26,6 @@ Desktop.ini
 /项目文档/PROJECT-GUIDE.md
 /项目文档/协作规则.md
 /项目文档/DEVELOPMENT-HANDOFF.md
+
+# Local beta deployment artifacts
+/ESurfingDialer-Docker/00_最终部署包/Docker_v1.4.0-beta.1/

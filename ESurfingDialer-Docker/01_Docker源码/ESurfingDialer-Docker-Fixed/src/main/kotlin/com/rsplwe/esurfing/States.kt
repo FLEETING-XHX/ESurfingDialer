@@ -13,6 +13,7 @@ object States {
     @Volatile var userIp = ""
     @Volatile var acIp = ""
     var ticket = ""
+    @Volatile var portalCandidate = PortalCandidate()
 
     @Volatile var networkStatus: ConnectivityStatus = ConnectivityStatus.DEFAULT
 

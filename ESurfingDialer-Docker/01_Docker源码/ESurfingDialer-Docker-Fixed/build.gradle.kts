@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.rsplwe.esurfing"
-version = "1.3.0"
+version = "1.4.0-beta.1"
 
 repositories {
     maven(url = "https://maven.aliyun.com/repository/public")
@@ -33,3 +33,13 @@ kotlin {
 application {
     mainClass.set("com.rsplwe.esurfing.DialerApp")
 }
+
+val authenticationRegression by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Run offline Docker authentication boundary regressions without credentials or native loading."
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rsplwe.esurfing.AuthenticationRegression")
+    environment("STATE_DIR", layout.buildDirectory.dir("authentication-regression-state").get().asFile.absolutePath)
+}
+tasks.check { dependsOn(authenticationRegression) }

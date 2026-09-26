@@ -4,7 +4,10 @@ import cn.yescallop.fluenturi.Uri
 import com.rsplwe.esurfing.Constants
 import com.rsplwe.esurfing.HealthStatus
 import com.rsplwe.esurfing.RuntimeConfig
-import com.rsplwe.esurfing.network.createHttpClient
+import com.rsplwe.esurfing.AuthenticationFailure
+import com.rsplwe.esurfing.PortalConfiguration
+import com.rsplwe.esurfing.network.createProbeHttpClient
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -21,14 +24,17 @@ data class NetworkConnectivityResult(
     val status: ConnectivityStatus,
     val userIp: String? = "",
     val acIp: String? = "",
-    val message: String = "ok"
+    val message: String = "ok",
+    val portalUrl: String? = null,
+    val portalBody: String? = null
 )
 
-fun checkConnectivity(): NetworkConnectivityResult {
-    val client = createHttpClient(false)
+private val probeClient = createProbeHttpClient(10)
+
+fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls, client: OkHttpClient = probeClient): NetworkConnectivityResult {
     val errors = mutableListOf<String>()
 
-    for (url in RuntimeConfig.networkCheckUrls) {
+    for (url in urls) {
         val request = Request.Builder()
             .removeHeader("User-Agent")
             .addHeader("User-Agent", Constants.USER_AGENT)
@@ -37,28 +43,25 @@ fun checkConnectivity(): NetworkConnectivityResult {
             .build()
 
         try {
-            val response = client.newCall(request).execute()
-            val location = response.headers["Location"]
-            val responseCode = response.code
-            val body = if (responseCode == 200) response.body?.string().orEmpty() else ""
-            response.close()
-
-            when (responseCode) {
-                301, 302, 303, 307, 308 -> {
-                    return parseRedirect(location)
+            client.newCall(request).execute().use { response ->
+                when (response.code) {
+                    301, 302, 303, 307, 308 -> {
+                        val location = response.header("Location")
+                        return parseRedirect(location?.let { response.request.url.resolve(it)?.toString() })
+                    }
+                    200, 204 -> {
+                        val bytes = response.peekBody(128 * 1024L + 1).bytes()
+                        if (bytes.size > 128 * 1024) throw AuthenticationFailure("PROBE_BODY_TOO_LARGE")
+                        val portalResult = parsePortalBody(bytes.toString(Charsets.UTF_8), response.request.url.toString())
+                        if (portalResult != null) return portalResult
+                        HealthStatus.markNetworkCheckSuccess()
+                        return NetworkConnectivityResult(status = ConnectivityStatus.SUCCESS)
+                    }
+                    else -> errors += "PROBE_HTTP_${response.code}"
                 }
-
-                200, 204 -> {
-                    val portalResult = parsePortalBody(body)
-                    if (portalResult != null) return portalResult
-                    HealthStatus.markNetworkCheckSuccess()
-                    return NetworkConnectivityResult(status = ConnectivityStatus.SUCCESS)
-                }
-
-                else -> errors += "$url returned HTTP $responseCode"
             }
-        } catch (e: Throwable) {
-            errors += "$url: ${e.localizedMessage ?: e::class.java.simpleName}"
+        } catch (e: Exception) {
+            errors += if (e is AuthenticationFailure) e.code else "PROBE_TRANSPORT_ERROR"
         }
     }
     val message = errors.joinToString("; ").ifBlank { "all network checks failed" }
@@ -72,33 +75,42 @@ private fun parseRedirect(location: String?): NetworkConnectivityResult {
     val params = parseQueryParams(location)
     val userIp = firstParam(params, "wlanuserip", "userIp", "userip", "user_ip", "clientip")
     val acIp = firstParam(params, "wlanacip", "acIp", "acip", "ac_ip", "gwip")
-    return if (userIp.isNullOrBlank() || acIp.isNullOrBlank()) {
-        NetworkConnectivityResult(status = ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP)
+    return if (!PortalConfiguration.isIpv4(userIp.orEmpty()) || !PortalConfiguration.isIpv4(acIp.orEmpty())) {
+        NetworkConnectivityResult(status = ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, portalUrl = location)
     } else {
         NetworkConnectivityResult(
             status = ConnectivityStatus.IS_REDIRECTS_FOUND_IP,
             userIp = userIp,
-            acIp = acIp
+            acIp = acIp,
+            portalUrl = location
         )
     }
 }
 
-private fun parsePortalBody(body: String): NetworkConnectivityResult? {
+private fun parsePortalBody(body: String, url: String): NetworkConnectivityResult? {
+    try {
+        PortalConfiguration.parse(body)?.let {
+            return NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_FOUND_IP, it.userIp, it.acIp, portalUrl = url, portalBody = body)
+        }
+    } catch (e: AuthenticationFailure) {
+        return NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, message = e.code, portalUrl = url, portalBody = body)
+    }
     if (body.isBlank()) return null
     val lower = body.lowercase()
     if (!lower.contains("wlanuserip") && !lower.contains("userip") && !lower.contains("wlanacip")) return null
 
     val userIp = Regex("(?i)(?:wlanuserip|userip|user_ip|clientip)=([^&\"'\\s<>]+)")
-        .find(body)?.groupValues?.get(1)
+        .find(body)?.groupValues?.get(1)?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
     val acIp = Regex("(?i)(?:wlanacip|acip|ac_ip|gwip)=([^&\"'\\s<>]+)")
-        .find(body)?.groupValues?.get(1)
-    return if (userIp.isNullOrBlank() || acIp.isNullOrBlank()) {
-        NetworkConnectivityResult(status = ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP)
+        .find(body)?.groupValues?.get(1)?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
+    return if (!PortalConfiguration.isIpv4(userIp.orEmpty()) || !PortalConfiguration.isIpv4(acIp.orEmpty())) {
+        NetworkConnectivityResult(status = ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, portalUrl = url, portalBody = body)
     } else {
         NetworkConnectivityResult(
             status = ConnectivityStatus.IS_REDIRECTS_FOUND_IP,
-            userIp = URLDecoder.decode(userIp, StandardCharsets.UTF_8),
-            acIp = URLDecoder.decode(acIp, StandardCharsets.UTF_8)
+            userIp = userIp,
+            acIp = acIp,
+            portalUrl = url, portalBody = body
         )
     }
 }
