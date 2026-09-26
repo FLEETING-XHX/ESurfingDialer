@@ -11,6 +11,9 @@ WORKDIR /app
 COPY build/libs/*-all.jar /app/client.jar
 COPY --chmod=755 docker/entrypoint.sh /app/entrypoint.sh
 COPY --chmod=755 docker/healthcheck.sh /app/healthcheck.sh
+COPY --chmod=755 docker/health-state.sh /app/health-state.sh
+COPY --chmod=755 docker/log-maintenance.sh /app/log-maintenance.sh
+COPY docker/log-sink.awk /app/log-sink.awk
 
 RUN mkdir -p /data /data/logs \
     && chown -R esurfing:esurfing /app /data

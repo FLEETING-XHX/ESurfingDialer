@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-26 v1.4.0-beta.2 (local testing only)
+
+- Respect stopped/paused containers; add per-container watchdog locking, pause and cooldown, without docker start/restart operations.
+- Separate network completion from success; supervise bounded client stages with a monotonic clock and abnormal exit for stalled JNI.
+- Validate health times and deadlines; encode scalar state JSON consistently and atomically replace health/device/planner files.
+- Qualify lifetime samples; fix past targets and cross-midnight windows, handle corrupt/future state and clock rollback.
+- Bound mounted logs per file/total, replace per-line date/tee with a persistent logger, reduce default health write frequency and include read-only runtime sampling.
+- Ship an independent ESurfingDialer-Beta2 amd64 offline package; keep beta1 and formal deployments untouched. LuCI is deferred.
+
 ## 2026-09-26 v1.4.0-beta.1 (local testing only)
 
 - Validate authentication XML fields and heartbeat intervals; escape dynamic request fields and bound response sizes.

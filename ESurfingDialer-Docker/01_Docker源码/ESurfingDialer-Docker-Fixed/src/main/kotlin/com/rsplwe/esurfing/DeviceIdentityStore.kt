@@ -11,7 +11,7 @@ object DeviceIdentityStore {
 
     fun loadIntoStates() {
         val file = File(States.rootDir, "device-state.json")
-        val existing = if (file.isFile) file.readText() else ""
+        val existing = if (file.isFile) StateFiles.read(file) else ""
 
         val envMac = System.getenv("DIALER_MAC_ADDRESS")?.trim()?.takeIf { it.isNotEmpty() }
         val envClientId = System.getenv("DIALER_CLIENT_ID")?.trim()?.takeIf { it.isNotEmpty() }
@@ -35,19 +35,11 @@ object DeviceIdentityStore {
     }
 
     private fun readJsonString(content: String, field: String): String? {
-        return Regex("\"$field\"\\s*:\\s*\"([^\"]+)\"").find(content)?.groupValues?.get(1)
+        return runCatching { StateJson.decode(content)[field] as? String }.getOrNull()
     }
 
     private fun write(file: File, macAddress: String, clientId: String) {
-        file.parentFile?.mkdirs()
-        file.writeText(
-            """
-            {
-              "macAddress": "$macAddress",
-              "clientId": "$clientId"
-            }
-            """.trimIndent() + "\n"
-        )
+        StateFiles.write(file, StateJson.encode(linkedMapOf("macAddress" to macAddress, "clientId" to clientId)))
     }
 
     private fun maskMac(mac: String): String {

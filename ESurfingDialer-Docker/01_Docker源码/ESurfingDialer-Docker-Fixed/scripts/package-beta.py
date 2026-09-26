@@ -9,12 +9,15 @@ import gzip
 import hashlib
 import io
 import json
+import subprocess
 from pathlib import Path
 import tarfile
 import zipfile
 
 BASE_SHA256 = "93bca5389a75eb997f1aec0d0316f433401e758129f01d7fa862ffb2bb9fb5fd"
-VERSION = "v1.4.0-beta.1"
+VERSION = "v1.4.0-beta.2"
+CONTAINER = "ESurfingDialer-Beta2"
+PROJECT = "esurfing-dialer-beta2"
 TAG = "esurfing-dialer:" + VERSION
 NAME = "ESurfingDialer-Docker-" + VERSION
 
@@ -46,7 +49,7 @@ def image(base, jar, source, output):
     layer_bytes = io.BytesIO()
     with tarfile.open(fileobj=layer_bytes, mode="w", format=tarfile.PAX_FORMAT) as layer:
         add_file(layer, "app/client.jar", jar.read_bytes())
-        for script in ["entrypoint.sh", "healthcheck.sh"]:
+        for script in ["entrypoint.sh", "healthcheck.sh", "health-state.sh", "log-maintenance.sh", "log-sink.awk"]:
             add_file(layer, "app/" + script, (source / "docker" / script).read_bytes().replace(b"\r\n", b"\n"), 0o755)
     new_layer = layer_bytes.getvalue()
     with tarfile.open(base, "r:gz") as original, tarfile.open(output, "w:gz", compresslevel=6) as target:
@@ -70,7 +73,7 @@ def image(base, jar, source, output):
         descriptors.append({"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": new_digest, "size": len(new_layer)})
         config["rootfs"]["diff_ids"].append(new_digest)
         config["created"] = now
-        config.setdefault("history", []).append({"created": now, "created_by": "Local beta: verified v1.3 runtime + updated client.jar and unchanged runtime scripts"})
+        config.setdefault("history", []).append({"created": now, "created_by": "Local beta: verified v1.3 runtime + updated client.jar and updated runtime scripts"})
         config["config"].setdefault("Labels", {}).update({"org.opencontainers.image.version": VERSION, "esurfing.release.channel": "beta", "esurfing.base.sha256": BASE_SHA256})
         config_data = serialized(config)
         config_digest = blob(target, config_data)
@@ -124,24 +127,34 @@ def main():
     (package / "images").mkdir()
     image_path = package / "images" / ("esurfing-dialer-" + VERSION + "-amd64.tar.gz")
     metadata = image(args.base, args.jar, source, image_path)
+    metadata.update(version=VERSION, containerName=CONTAINER, composeProject=PROJECT,
+        sourceRevision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip(),
+        sourceDirty=bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no", "--", "."], cwd=source, text=True).strip()))
     verify_image(image_path, args.jar)
     for name in [".env.example", "docker-compose.yml", "install.sh", "LICENSE", "CHANGELOG.md"]:
         text = (source / name).read_text(encoding="utf-8")
         if name != "CHANGELOG.md":
             text = text.replace("v1.3", VERSION)
         if name == "docker-compose.yml":
-            text = "name: esurfing-dialer-beta\n" + text.replace("container_name: ESurfingDialer", "container_name: ESurfingDialer-Beta")
+            text = "name: " + PROJECT + "\n" + text.replace("container_name: ESurfingDialer", "container_name: " + CONTAINER)
         if name == "install.sh":
             text = text.replace('aarch64|arm64)\n    package_arch="arm64"', 'aarch64|arm64)\n    fail "This beta package supports amd64 only."\n    package_arch="arm64"')
-            text = text.replace("docker compose up -d", "docker compose --project-name esurfing-dialer-beta up -d")
-            text = text.replace('name=ESurfingDialer"', 'name=^/ESurfingDialer-Beta$"').replace("--tail 80 ESurfingDialer", "--tail 80 ESurfingDialer-Beta")
-            text = text.replace("Starting ESurfingDialer with", "Starting ESurfingDialer-Beta with")
+            text = text.replace("docker compose up -d", "docker compose --project-name " + PROJECT + " up -d")
+            text = text.replace('name=ESurfingDialer"', 'name=^/' + CONTAINER + '$"').replace("--tail 80 ESurfingDialer", "--tail 80 " + CONTAINER)
+            text = text.replace("Starting ESurfingDialer with", "Starting " + CONTAINER + " with")
             text = text.replace('command -v docker', 'cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\n\ncommand -v docker', 1)
             # Never operate on a same-named container belonging to another deployment.
             anchor = 'free_kb="$(df'
-            preflight = 'if docker inspect ESurfingDialer-Beta >/dev/null 2>&1; then\n  fail "ESurfingDialer-Beta already exists. Use the beta directory and explicit Compose commands to update it."\nfi\n\n'
+            preflight = 'if docker inspect ' + CONTAINER + ' >/dev/null 2>&1; then\n  fail "' + CONTAINER + ' already exists. Use the beta directory and explicit Compose commands to update it."\nfi\n\n'
             text = text.replace(anchor, preflight + anchor, 1)
         (package / name).write_text(text, encoding="utf-8", newline="\n")
+    (package / "scripts").mkdir()
+    (package / "docker").mkdir()
+    watchdog = (source / "scripts/openwrt-watchdog.sh").read_text(encoding="utf-8")
+    watchdog = watchdog.replace("${CONTAINER_NAME:-ESurfingDialer}", "${CONTAINER_NAME:-" + CONTAINER + "}")
+    (package / "scripts/openwrt-watchdog.sh").write_text(watchdog, encoding="utf-8", newline="\n")
+    (package / "scripts/measure-runtime.sh").write_text((source / "scripts/measure-runtime.sh").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+    (package / "docker/health-state.sh").write_text((source / "docker/health-state.sh").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     (package / "README_BETA.md").write_text((source / "README_BETA.md").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     (package / "VERSION").write_text(VERSION + "\n", encoding="utf-8")
     (package / "BUILDINFO.json").write_bytes(serialized(metadata))

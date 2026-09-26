@@ -60,7 +60,8 @@ object DialerApp {
                 HealthStatus.networkCheckThreadAlive = true
                 while (isRunning) {
                     try {
-                        val networkStatus = checkConnectivity()
+                        val networkStatus = try { checkConnectivity() } finally { HealthStatus.markNetworkCheckCompleted() }
+                        ReauthPlanner.observeNetwork(networkStatus)
 
                         when (networkStatus.status) {
                             ConnectivityStatus.SUCCESS -> {
@@ -118,6 +119,7 @@ object DialerApp {
                         currentThread().interrupt()
                         break
                     } catch (e: Exception) {
+                        ReauthPlanner.invalidateSample()
                         HealthStatus.markError("network monitor recovered: ${e.message}")
                         logger.error("NETWORK_MONITOR_RECOVERED", e)
                         sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)

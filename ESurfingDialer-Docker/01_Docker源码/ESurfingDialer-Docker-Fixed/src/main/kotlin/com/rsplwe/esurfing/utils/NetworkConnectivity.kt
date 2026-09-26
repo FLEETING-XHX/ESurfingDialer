@@ -9,6 +9,7 @@ import com.rsplwe.esurfing.PortalConfiguration
 import com.rsplwe.esurfing.network.createProbeHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -33,8 +34,11 @@ private val probeClient = createProbeHttpClient(10)
 
 fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls, client: OkHttpClient = probeClient): NetworkConnectivityResult {
     val errors = mutableListOf<String>()
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(RuntimeConfig.networkProbeBudgetSeconds)
 
-    for (url in urls) {
+    for (url in urls.take(8)) {
+        val remaining = deadline - System.nanoTime()
+        if (remaining <= 0) { errors += "PROBE_BUDGET_EXCEEDED"; break }
         val request = Request.Builder()
             .removeHeader("User-Agent")
             .addHeader("User-Agent", Constants.USER_AGENT)
@@ -43,7 +47,9 @@ fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls, clien
             .build()
 
         try {
-            client.newCall(request).execute().use { response ->
+            val call = client.newCall(request)
+            call.timeout().timeout(remaining, TimeUnit.NANOSECONDS)
+            call.execute().use { response ->
                 when (response.code) {
                     301, 302, 303, 307, 308 -> {
                         val location = response.header("Location")

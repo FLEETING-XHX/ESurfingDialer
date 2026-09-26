@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.rsplwe.esurfing"
-version = "1.4.0-beta.1"
+version = "1.4.0-beta.2"
 
 repositories {
     maven(url = "https://maven.aliyun.com/repository/public")
@@ -43,3 +43,25 @@ val authenticationRegression by tasks.registering(JavaExec::class) {
     environment("STATE_DIR", layout.buildDirectory.dir("authentication-regression-state").get().asFile.absolutePath)
 }
 tasks.check { dependsOn(authenticationRegression) }
+
+val operationsRegression by tasks.registering(JavaExec::class) {
+    group = "verification"
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rsplwe.esurfing.OperationsRegression")
+    environment("NETWORK_CHECK_INTERVAL_SECONDS", "300")
+    environment("STATE_DIR", layout.buildDirectory.dir("operations-regression-state").get().asFile.absolutePath)
+}
+tasks.check { dependsOn(operationsRegression) }
+
+val supervisionRegression by tasks.registering(Exec::class) {
+    group = "verification"
+    commandLine("python", "scripts/check-supervision.py", "--report", "build/supervision-regression.json")
+}
+tasks.check { dependsOn(supervisionRegression) }
+
+val logRegression by tasks.registering(Exec::class) {
+    group = "verification"
+    commandLine("python", "scripts/check-logs.py")
+}
+tasks.check { dependsOn(logRegression) }
