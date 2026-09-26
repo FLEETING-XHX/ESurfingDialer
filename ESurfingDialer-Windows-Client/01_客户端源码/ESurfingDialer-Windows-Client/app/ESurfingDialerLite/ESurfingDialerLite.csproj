@@ -9,7 +9,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>2.3</Version>
+    <Version>2.3.0-beta</Version>
+    <InformationalVersion>2.3beta</InformationalVersion>
     <AssemblyVersion>2.3.0.0</AssemblyVersion>
     <FileVersion>2.3.0.0</FileVersion>
     <Product>ESurfingDialer Lite</Product>

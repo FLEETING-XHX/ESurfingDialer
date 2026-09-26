@@ -56,6 +56,22 @@ object DialerApp {
         DeviceIdentityStore.loadIntoStates()
         HealthStatus.startReporter()
         val repeatedLogLimiter = LogRateLimiter()
+        val portalRecovery = PortalRecoveryTracker()
+        fun requestPortalRecovery(result: com.rsplwe.esurfing.utils.NetworkConnectivityResult) {
+            val now = System.currentTimeMillis() / 1000
+            if (portalRecovery.observe(result, States.userIp, States.acIp,
+                    HealthStatus.consecutiveHeartbeatFailures.get(), now - HealthStatus.lastLoginSuccessAt,
+                    now - HealthStatus.lastPortalReauthAt)) {
+                // Keep the accepted recovery pending even if a later connectivity probe returns SUCCESS.
+                HealthStatus.lastPortalReauthAt = now
+                States.requestAuthorization()
+                States.updateNetworkStatus(result.status)
+                logger.warn("PORTAL_REAUTH_REQUESTED")
+                repeatedLogLimiter.reset("portal-debounced")
+            } else if (repeatedLogLimiter.shouldLog("portal-debounced")) {
+                logger.info("PORTAL_REAUTH_DEBOUNCED")
+            }
+        }
 
         val networkCheck = object : Thread() {
             override fun run() {
@@ -67,6 +83,7 @@ object DialerApp {
 
                         when (networkStatus.status) {
                             ConnectivityStatus.SUCCESS -> {
+                                portalRecovery.reset()
                                 HealthStatus.markNetworkCheckSuccess()
                                 States.updateNetworkStatus(networkStatus.status)
                                 repeatedLogLimiter.reset("network-error")
@@ -80,7 +97,10 @@ object DialerApp {
                                 HealthStatus.markError(networkStatus.message.takeUnless { it == "ok" } ?: "Portal requires configuration discovery")
                                 if (repeatedLogLimiter.shouldLog("portal-missing-parameters"))
                                     logger.error("No parameter detected in url.")
-                                if (!HealthStatus.authenticated) States.updateNetworkStatus(networkStatus.status)
+                                if (!HealthStatus.authenticated) {
+                                    portalRecovery.reset()
+                                    States.updateNetworkStatus(networkStatus.status)
+                                } else requestPortalRecovery(networkStatus)
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
@@ -92,24 +112,15 @@ object DialerApp {
                                 val now = System.currentTimeMillis() / 1000
                                 HealthStatus.lastNetworkCheckAt = now
                                 if (!HealthStatus.authenticated) {
+                                    portalRecovery.reset()
                                     States.updateNetworkStatus(networkStatus.status)
                                 } else {
-                                    val count = HealthStatus.consecutivePortalDetections.incrementAndGet()
-                                    if (RecoveryPolicy.shouldReauthenticate(count,
-                                            HealthStatus.consecutiveHeartbeatFailures.get(),
-                                            now - HealthStatus.lastLoginSuccessAt,
-                                            now - HealthStatus.lastPortalReauthAt)) {
-                                        HealthStatus.lastPortalReauthAt = now
-                                        States.updateNetworkStatus(networkStatus.status)
-                                        logger.warn("PORTAL_REAUTH_REQUESTED count=$count")
-                                        repeatedLogLimiter.reset("portal-debounced")
-                                    } else if (repeatedLogLimiter.shouldLog("portal-debounced")) {
-                                        logger.info("PORTAL_REAUTH_DEBOUNCED count=$count")
-                                    }
+                                    requestPortalRecovery(networkStatus)
                                 }
                             }
 
                             ConnectivityStatus.REQUEST_ERROR -> {
+                                portalRecovery.reset()
                                 HealthStatus.markError(networkStatus.message)
                                 if (repeatedLogLimiter.shouldLog("network-error"))
                                     logger.error("Request Error: ${networkStatus.message}")
@@ -117,6 +128,7 @@ object DialerApp {
                             }
 
                             ConnectivityStatus.DEFAULT -> {
+                                portalRecovery.reset()
                                 if (!HealthStatus.authenticated) States.updateNetworkStatus(networkStatus.status)
                             }
                         }
@@ -181,6 +193,7 @@ object DialerApp {
                         "stop" -> exitProcess(0)
                         "enhanced on", "enhanced=1", "enhanced true" -> RuntimeConfig.setEnhancedConnection(true)
                         "enhanced off", "enhanced=0", "enhanced false" -> RuntimeConfig.setEnhancedConnection(false)
+                        "network recheck" -> CoreSignals.requestNetworkRecheck()
                     }
                 }
             }

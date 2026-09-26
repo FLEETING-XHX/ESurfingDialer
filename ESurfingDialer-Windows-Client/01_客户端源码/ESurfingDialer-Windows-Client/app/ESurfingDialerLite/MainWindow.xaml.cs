@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using Brush = System.Windows.Media.Brush;
 using Button = System.Windows.Controls.Button;
 
@@ -39,6 +40,8 @@ public partial class MainWindow : Window
     private DateTimeOffset? _lastHealthyAt;
     private DateTimeOffset? _lossDetectedAt;
     private DateTimeOffset? _recoveryStartedAt;
+    private long? _resumeRecoveryStartedAt;
+    private bool _powerEventsSubscribed;
 
     public MainWindow() : this(false) { }
 
@@ -61,6 +64,12 @@ public partial class MainWindow : Window
         });
         _healthTimer.Tick += async (_, _) => await RefreshHealthSafelyAsync();
         _healthTimer.Start();
+        if (!previewMode)
+        {
+            try { SystemEvents.PowerModeChanged += OnPowerModeChanged; _powerEventsSubscribed = true; }
+            catch (InvalidOperationException) { AppendLog("当前环境不支持系统电源通知。"); }
+            catch (System.Runtime.InteropServices.ExternalException) { AppendLog("系统电源通知注册失败，保留常规健康检测。"); }
+        }
         _speedTimer.Interval = TimeSpan.FromSeconds(1);
         _speedTimer.Tick += (_, _) => RefreshSpeed();
         IsVisibleChanged += (_, _) => UpdateSpeedSampling();
@@ -208,7 +217,8 @@ public partial class MainWindow : Window
             UpdateStatus("已断开");
 
         if (_config.EnhancedConnection && _dialer.IsRequested && _dialer.IsRunning
-            && now - _dialer.StartedAt >= EnhancedConnectionPolicy.EnhancedStartupGrace)
+            && now - _dialer.StartedAt >= EnhancedConnectionPolicy.EnhancedStartupGrace
+            && !IsResumeRecoveryGraceActive())
         {
             var reason = EnhancedConnectionPolicy.RecoverableFailureReason(health, _dialer.StartedAt, now);
             if (reason == null) _consecutiveUnhealthyChecks = 0;
@@ -299,6 +309,7 @@ public partial class MainWindow : Window
         _automaticRecoveryExhausted = false;
         _nextRecoveryAllowedAt = DateTimeOffset.MinValue;
         _lastHealthyAt = null;
+        _resumeRecoveryStartedAt = null;
         _lossDetectedAt = null;
         _recoveryStartedAt = null;
     }
@@ -343,6 +354,27 @@ public partial class MainWindow : Window
         UploadSpeedText.Text = sample == null ? "-- KB/s" : NetworkSpeedSampler.Format(sample.Value.Upload);
         DownloadLine.Points = _speedSampler.Points(true, Math.Max(1, SpeedChart.ActualWidth), Math.Max(1, SpeedChart.ActualHeight));
         UploadLine.Points = _speedSampler.Points(false, Math.Max(1, SpeedChart.ActualWidth), Math.Max(1, SpeedChart.ActualHeight));
+    }
+
+    private bool IsResumeRecoveryGraceActive()
+    {
+        if (_resumeRecoveryStartedAt is not { } started) return false;
+        var elapsed = Stopwatch.GetElapsedTime(started);
+        return elapsed >= TimeSpan.Zero && elapsed < EnhancedConnectionPolicy.ResumeRecoveryGrace;
+    }
+
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != PowerModes.Resume || _disposed || Dispatcher.HasShutdownStarted) return;
+        Dispatcher.BeginInvoke(HandleSystemResume);
+    }
+
+    private void HandleSystemResume()
+    {
+        if (_disposed || _busy || !_dialer.RequestNetworkRecheck()) return;
+        _consecutiveUnhealthyChecks = 0;
+        _resumeRecoveryStartedAt = Stopwatch.GetTimestamp();
+        AppendLog("系统已恢复，重新检测网络并等待健康状态刷新。");
     }
 
     private void UpdateSpeedSampling()
@@ -600,6 +632,11 @@ public partial class MainWindow : Window
         _healthTimer.Stop();
         _speedTimer.Stop();
         _noticeTimer.Stop();
+        if (_powerEventsSubscribed)
+        {
+            SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+            _powerEventsSubscribed = false;
+        }
         try { _dialer.Stop(); } catch (Exception ex) { AppendLog("退出时停止核心失败：" + ex.Message); }
     }
 }

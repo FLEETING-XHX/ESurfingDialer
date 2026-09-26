@@ -133,7 +133,7 @@ internal static class Program
                 var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
                 using var stream = File.Create(Path.Combine(output, name + ".png")); encoder.Save(stream);
             }
-            void Call(string method, params object[] parameters) =>
+            object? Call(string method, params object[] parameters) =>
                 typeof(MainWindow).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, parameters);
             T Node<T>(string name) => (T)window.FindName(name);
             var liveConfig = (ClientConfig)typeof(MainWindow).GetField("_config", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
@@ -260,6 +260,16 @@ internal static class Program
             Call("SaveAccount_Click", window, new RoutedEventArgs());
             Check(store.Load().Accounts.Last().Name == "修改后的账户", "Account edited and saved");
             Call("CloseAccounts");
+            Call("HandleSystemResume");
+            var resumeField = typeof(MainWindow).GetField("_resumeRecoveryStartedAt", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            Check(resumeField.GetValue(window) == null, "Resume callback leaves manually disconnected client stopped");
+            resumeField.SetValue(window, System.Diagnostics.Stopwatch.GetTimestamp());
+            Check((bool)Call("IsResumeRecoveryGraceActive")!, "Resume recovery gate grants a bounded refresh window");
+            resumeField.SetValue(window, System.Diagnostics.Stopwatch.GetTimestamp() - 21 * System.Diagnostics.Stopwatch.Frequency);
+            Check(!(bool)Call("IsResumeRecoveryGraceActive")!, "Resume grace expires without extending on health polls");
+            resumeField.SetValue(window, System.Diagnostics.Stopwatch.GetTimestamp() + System.Diagnostics.Stopwatch.Frequency);
+            Check(!(bool)Call("IsResumeRecoveryGraceActive")!, "Future monotonic resume stamp does not suppress recovery");
+            resumeField.SetValue(window, null);
             Call("Notify", "设置已保存");
             Render("notice");
             var notice = Node<Border>("Notice");
@@ -327,6 +337,16 @@ internal static class Program
             core.EnhancedConnection = false;
             Wait(() => HealthSnapshot.Load() is { EnhancedConnection: false, NetworkCheckIntervalSeconds: 20, HealthWriteIntervalSeconds: 30 },
                 "Running core switches to conservative cadence without restart");
+            var unchangedProcess = Process().Id;
+            var unchangedStart = core.StartedAt;
+            Thread.Sleep(1200);
+            var priorNetworkCheck = HealthSnapshot.Load()?.LastNetworkCheckAt ?? 0;
+            var recheckWatch = System.Diagnostics.Stopwatch.StartNew();
+            Check(core.RequestNetworkRecheck(), "Resume recheck accepted by a requested live core");
+            Wait(() => (HealthSnapshot.Load()?.LastNetworkCheckAt ?? 0) > priorNetworkCheck,
+                "Resume recheck wakes conservative core network monitoring");
+            Check(recheckWatch.Elapsed < TimeSpan.FromSeconds(6) && Process().Id == unchangedProcess && core.StartedAt == unchangedStart,
+                "Resume recheck refreshes health without process restart");
             core.EnhancedConnection = true;
             Wait(() => HealthSnapshot.Load() is { EnhancedConnection: true, NetworkCheckIntervalSeconds: 5, HealthWriteIntervalSeconds: 15 },
                 "Running core restores enhanced cadence without restart");
@@ -335,10 +355,21 @@ internal static class Program
             Wait(() => core.IsRunning && core.StartedAt > first, "Enhanced connection restarts a crashed core");
             Process().Kill(entireProcessTree: true);
             Wait(() => !core.IsRunning, "Crash observed before pending recovery");
+            var cancellationField = typeof(DialerCoreProcess).GetField("_recoveryCancellation", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var pendingToken = ((CancellationTokenSource)cancellationField.GetValue(core)!).Token;
             core.Stop();
+            Check(pendingToken.IsCancellationRequested, "Manual stop cancels the pending recovery timer itself");
             Thread.Sleep(11200);
             Check(!core.IsRequested && !core.IsRunning, "Stop cancels delayed recovery");
+            Check(!core.RequestNetworkRecheck(), "Resume recheck cannot restart a manually stopped core");
+            core.StartAsync(config, PasswordProtector.Unprotect(config.ProtectedPassword), _ => { }).GetAwaiter().GetResult();
+            Wait(() => core.IsRunning, "Core restarts for pending-recovery cancellation check");
+            var modeCancellation = ((CancellationTokenSource)cancellationField.GetValue(core)!).Token;
+            Process().Kill(entireProcessTree: true);
+            Wait(() => !core.IsRunning, "Crash creates pending recovery before enhancement switch");
             core.EnhancedConnection = false;
+            Check(modeCancellation.IsCancellationRequested && !core.IsRequested,
+                "Disabling enhancement cancels pending timer and clears connection intent immediately");
             core.StartAsync(config, PasswordProtector.Unprotect(config.ProtectedPassword), _ => { }).GetAwaiter().GetResult();
             Wait(() => core.IsRunning, "Core can restart manually");
             Process().Kill(entireProcessTree: true);

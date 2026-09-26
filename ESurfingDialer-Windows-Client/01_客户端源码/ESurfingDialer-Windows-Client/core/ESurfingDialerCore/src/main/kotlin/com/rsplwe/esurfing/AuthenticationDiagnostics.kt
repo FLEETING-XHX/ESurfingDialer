@@ -1,45 +1,21 @@
 package com.rsplwe.esurfing
 
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import java.util.Locale
 
 /** Codes are safe to put in health.json; response bodies and exception messages are not. */
 class AuthenticationFailure(val code: String, val deterministic: Boolean = false) :
     IllegalStateException(code)
 
-data class ZsmMetadata(val format: String, val algoId: String? = null)
+data class ZsmMetadata(val format: String, val algoId: String? = null,
+                       val payloadOffset: Int? = null, val declaredUnpackedBytes: Int? = null)
 
 object AuthenticationDiagnostics {
     const val MAX_ZSM_BYTES = 1024 * 1024
-    private val uuid = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
     fun endpoint(url: String): String = url.toHttpUrlOrNull()?.let { "${it.scheme}://${it.host}:${it.port}" } ?: "invalid"
 
-    fun inspect(bytes: ByteArray): ZsmMetadata {
-        if (bytes.isEmpty()) throw AuthenticationFailure("ZSM_EMPTY", true)
-        if (bytes.size > MAX_ZSM_BYTES) throw AuthenticationFailure("ZSM_TOO_LARGE", true)
-        val prefix = bytes.take(128).toByteArray().toString(Charsets.US_ASCII).trimStart().lowercase(Locale.ROOT)
-        if (prefix.startsWith("<!doctype html") || prefix.startsWith("<html") || prefix.startsWith("<?xml")
-            || prefix.startsWith("{\"") || prefix.startsWith("<error"))
-            throw AuthenticationFailure("ZSM_UNEXPECTED_TEXT", true)
-        // The reference attachment uses two length-prefixed strings after three header bytes.
-        // A UUID is only a diagnostic candidate; this does not prove algorithm support or validate keys.
-        if (bytes.size < 5) throw AuthenticationFailure("ZSM_TRUNCATED", true)
-        var offset = 3
-        fun field(): String? {
-            if (offset >= bytes.size) return null
-            val length = bytes[offset++].toInt() and 0xff
-            if (length > bytes.size - offset) return null
-            val value = bytes.copyOfRange(offset, offset + length).toString(Charsets.US_ASCII)
-            offset += length
-            return value
-        }
-        val first = field()
-        val second = field()
-        val id = listOfNotNull(second, first).firstOrNull { uuid.matches(it) }?.uppercase(Locale.ROOT)
-        // Unknown layouts remain eligible for the existing native provider. Never guess a UUID from arbitrary bytes.
-        return ZsmMetadata(if (first != null && second != null) "length_prefixed" else "unknown", id)
-    }
+    fun inspect(bytes: ByteArray): ZsmMetadata = ZsmHeaderReader.inspect(bytes)
+
 }
 
 /** Pure boundary around native loading, so rejected handles and cleanup can be regression tested. */

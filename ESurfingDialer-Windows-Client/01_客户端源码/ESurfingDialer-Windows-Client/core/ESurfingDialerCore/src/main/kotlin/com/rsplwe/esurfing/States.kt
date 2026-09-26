@@ -3,6 +3,7 @@ package com.rsplwe.esurfing
 import com.rsplwe.esurfing.utils.ConnectivityStatus
 import com.rsplwe.esurfing.utils.NetworkConnectivityResult
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 
 object States {
@@ -29,8 +30,20 @@ object States {
     @Volatile
     var isRunning = true
 
-    @Volatile
-    var forceAuthorization = false
+    private val requestedAuthorization = AtomicLong(0)
+    private val completedAuthorization = AtomicLong(0)
+    val authorizationRequestVersion: Long get() = requestedAuthorization.get()
+    val forceAuthorization: Boolean get() = requestedAuthorization.get() != completedAuthorization.get()
+
+    fun requestAuthorization() {
+        requestedAuthorization.incrementAndGet()
+        CoreSignals.wakeClient()
+    }
+
+    fun acknowledgeAuthorization(version: Long) {
+        completedAuthorization.updateAndGet { maxOf(it, version) }
+        if (forceAuthorization) CoreSignals.wakeClient()
+    }
 
     var useDynarmic = false
 

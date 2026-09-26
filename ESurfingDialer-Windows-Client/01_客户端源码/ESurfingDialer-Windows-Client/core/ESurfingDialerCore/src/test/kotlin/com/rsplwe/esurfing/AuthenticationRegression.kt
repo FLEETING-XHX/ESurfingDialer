@@ -43,6 +43,47 @@ fun main() {
     verify(freed == 8L, "Algorithm exception frees valid native handle")
     verify(NativeSessionLoader.load({ 9 }, { id }, { error("must not free") }).first == 9L,
         "Valid native load preserves handle")
+    var freeCalls = 0
+    val lifecycle = NativeSessionHandle(9) { verify(it == 9L, "Native release receives the original handle"); freeCalls++ }
+    verify(lifecycle.use { it } == 9L, "Active native handle usable")
+    lifecycle.free(); lifecycle.free()
+    verify(freeCalls == 1, "Repeated free releases native handle exactly once")
+    failure("NATIVE_SESSION_CLOSED") { lifecycle.use { error("JNI must not execute after free") } }
+    var failedFreeCalls = 0
+    val failedRelease = NativeSessionHandle(10) { failedFreeCalls++; error("free failed") }
+    try { failedRelease.free() } catch (_: IllegalStateException) { }
+    failedRelease.free()
+    verify(failedFreeCalls == 1, "Release exception cannot cause a second native free")
+    failure("NATIVE_SESSION_CLOSED") { failedRelease.use { error("closed") } }
+    val entered = java.util.concurrent.CountDownLatch(1)
+    val finishUse = java.util.concurrent.CountDownLatch(1)
+    val beginFree = java.util.concurrent.CountDownLatch(1)
+    val didFree = java.util.concurrent.CountDownLatch(1)
+    val concurrent = NativeSessionHandle(11) { didFree.countDown() }
+    val user = Thread { concurrent.use { entered.countDown(); finishUse.await(2, java.util.concurrent.TimeUnit.SECONDS) } }
+    val closer = Thread { beginFree.countDown(); concurrent.free() }
+    user.start()
+    verify(entered.await(2, java.util.concurrent.TimeUnit.SECONDS), "Native operation begins before close")
+    closer.start(); beginFree.await(2, java.util.concurrent.TimeUnit.SECONDS)
+    verify(!didFree.await(100, java.util.concurrent.TimeUnit.MILLISECONDS), "Free waits until in-flight native use completes")
+    finishUse.countDown(); user.join(2000); closer.join(2000)
+    verify(didFree.count == 0L && !user.isAlive && !closer.isAlive, "Native use and close finish without leaked workers")
+    val packed = zsm.copyOf(zsm.size + 20)
+    val payloadOffset = 5 + 3 + 36
+    val packedWord = 0x20000400
+    repeat(4) { packed[payloadOffset + 5 + it] = (packedWord ushr (8 * it)).toByte() }
+    val packedMetadata = AuthenticationDiagnostics.inspect(packed)
+    verify(packedMetadata.format == "packed_dynamic_candidate" && packedMetadata.declaredUnpackedBytes == 1024,
+        "Bounded packed-module header marker is diagnostic only")
+    verify(packedMetadata.algoId == id.uppercase() && packedMetadata.payloadOffset == payloadOffset,
+        "Packed-module identifier remains a candidate, preserving payload offset")
+    repeat(9) { n -> verify(AuthenticationDiagnostics.inspect(packed.copyOf(payloadOffset + n)).format == "length_prefixed",
+        "Truncated packed header is not recognized ${n + 1}") }
+    val zeroPackedSize = packed.copyOf()
+    repeat(4) { zeroPackedSize[payloadOffset + 5 + it] = (0x20000000 ushr (8 * it)).toByte() }
+    verify(AuthenticationDiagnostics.inspect(zeroPackedSize).format == "length_prefixed", "Zero declared module size is not accepted as packed")
+    verify(AuthenticationDiagnostics.inspect(ByteArray(8) { -1 }).format == "unknown", "Unknown binary layout stays eligible for native provider")
+
     val retry = AuthenticationRetryPolicy()
     val rejected = AuthenticationFailure("NATIVE_SESSION_REJECTED", true)
     verify(!retry.record(rejected) && !retry.record(rejected) && retry.record(rejected), "Same deterministic failure pauses at three")

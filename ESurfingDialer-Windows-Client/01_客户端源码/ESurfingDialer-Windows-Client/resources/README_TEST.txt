@@ -1,7 +1,9 @@
-﻿ESurfingDialer Lite v2.0 测试说明
+﻿ESurfingDialer Lite v2.3beta 测试说明
+
+警告：这是预发布测试版。真实校园网认证、算法兼容、实际休眠/切网及长期运行仍待验证，不保证解决 v2.2 的认证失败。测试前保留原有可用的认证方式。
 
 1. 安装
-   运行 ESurfingDialer-Windows-v2.3-Setup.exe，按提示安装。
+   运行 ESurfingDialer-Windows-v2.3beta-Setup.exe，按提示安装。
 
 2. 首次使用
    打开 ESurfingDialer Lite，输入校园网账号和密码，点击“保存配置”，再点击“连接”。

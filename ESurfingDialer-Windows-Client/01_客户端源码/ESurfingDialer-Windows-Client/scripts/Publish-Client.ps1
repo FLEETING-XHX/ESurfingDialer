@@ -15,6 +15,7 @@ if (Test-Path $distDir) {
 }
 
 dotnet publish $appProject -c Release -r win-x64 --self-contained true -o $distDir
+if ($LASTEXITCODE -ne 0) { throw "Client publish failed." }
 
 $coreOut = Join-Path $distDir "core"
 New-Item -ItemType Directory -Force -Path $coreOut | Out-Null

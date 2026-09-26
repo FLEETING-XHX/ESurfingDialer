@@ -7,6 +7,12 @@ object CoreSignals {
     private val clientSignal = Semaphore(0)
     private val networkSignal = Semaphore(0)
 
+    fun requestNetworkRecheck() {
+        wakeNetworkMonitor()
+        wakeClient()
+        HealthStatus.requestWrite()
+    }
+
     fun wakeClient() = signal(clientSignal)
 
     fun wakeNetworkMonitor() = signal(networkSignal)

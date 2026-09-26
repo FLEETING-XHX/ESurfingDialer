@@ -12,6 +12,7 @@ public static class EnhancedConnectionPolicy
     public const int ConservativeCoreHealthWriteSeconds = 30;
     public static readonly TimeSpan EnhancedStartupGrace = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan AuthenticationRecoveryGrace = TimeSpan.FromSeconds(45);
+    public static readonly TimeSpan ResumeRecoveryGrace = TimeSpan.FromSeconds(20);
     public const int ConsecutiveUnhealthyChecksBeforeRecovery = 2;
     public const int MaximumAutomaticRecoveries = 3;
 

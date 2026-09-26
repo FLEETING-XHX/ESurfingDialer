@@ -134,7 +134,7 @@ class Client(private val options: Options) : Runnable {
 
             if (failures >= RuntimeConfig.heartbeatFailureThreshold) {
                 resetSessionState("heartbeat failure threshold reached", countAbnormalRecovery = true)
-                States.forceAuthorization = true
+                States.requestAuthorization()
                 States.updateNetworkStatus(DEFAULT)
             } else {
                 keepRetrySeconds = (failures * 5L).coerceAtMost(30)
@@ -145,6 +145,7 @@ class Client(private val options: Options) : Runnable {
     }
 
     private fun authorization() {
+        val authorizationRequest = States.authorizationRequestVersion
         if (session != null && HealthStatus.authenticated) {
             try { term() } catch (e: Exception) { logger.warn("SESSION_TERMINATE_RECOVERY_FAILED", e) }
         }
@@ -188,7 +189,7 @@ class Client(private val options: Options) : Runnable {
             sleep(nextLoginRetrySeconds() * 1000)
             return
         }
-        States.forceAuthorization = false
+        States.acknowledgeAuthorization(authorizationRequest)
         States.updateNetworkStatus(SUCCESS)
         authenticationRetryPolicy.reset()
         loginFailures = 0
@@ -201,7 +202,7 @@ class Client(private val options: Options) : Runnable {
     private fun initSession() {
         val zsm = requestSessionBootstrap(endpoints!!.ticketUrl, States.algoId)
         val metadata = AuthenticationDiagnostics.inspect(zsm)
-        logger.info("ZSM_METADATA format=${metadata.format} algoIdCandidate=${metadata.algoId ?: "unavailable"}")
+        logger.info("ZSM_METADATA provider=android64_native format=${metadata.format} algoIdCandidate=${metadata.algoId ?: "unavailable"} declaredUnpackedBytes=${metadata.declaredUnpackedBytes ?: -1}")
         try { session = Session(zsm) }
         catch (e: AuthenticationFailure) { throw e }
         catch (_: Exception) { throw AuthenticationFailure("NATIVE_ENVIRONMENT_INIT_FAILED", true) }

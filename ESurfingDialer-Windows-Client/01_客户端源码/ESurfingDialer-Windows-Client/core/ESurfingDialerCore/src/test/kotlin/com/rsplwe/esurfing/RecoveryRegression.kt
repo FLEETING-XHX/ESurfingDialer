@@ -19,6 +19,56 @@ fun main() {
     verify(RecoveryPolicy.shouldReauthenticate(12, 0, 120, 9999), "Repeated portal triggers recovery")
     verify(RecoveryPolicy.shouldReauthenticate(1, 1, 120, 9999), "Heartbeat corroborates forced logout")
     verify(!RecoveryPolicy.shouldReauthenticate(99, 2, 120, 5), "Recovery cooldown")
+    fun portal(ip: String = "10.1.2.3", ac: String = "10.2.3.4") =
+        com.rsplwe.esurfing.utils.NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_FOUND_IP, ip, ac)
+    val tracker = PortalRecoveryTracker()
+    val missingIpPortal = com.rsplwe.esurfing.utils.NetworkConnectivityResult(
+        ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, portalUrl = "http://example.com/portal")
+    repeat(RuntimeConfig.portalDetectionThreshold - 1) {
+        verify(!tracker.observe(missingIpPortal, "10.1.2.3", "10.2.3.4", 0, 120, 9999),
+            "Missing-IP portal waits for repeated evidence ${it + 1}")
+    }
+    verify(tracker.observe(missingIpPortal, "10.1.2.3", "10.2.3.4", 0, 120, 9999),
+        "Authenticated session can recover through a missing-IP portal")
+    tracker.reset()
+    verify(!tracker.observe(portal("10.9.8.7"), "10.1.2.3", "10.2.3.4", 0, 1, 0),
+        "Single changed IP cannot force reauthentication")
+    verify(tracker.observe(portal("10.9.8.7"), "10.1.2.3", "10.2.3.4", 0, 1, 0),
+        "Two consistent new IP probes bypass old network cooldown and grace")
+    tracker.reset()
+    verify(!tracker.observe(portal("10.9.8.7"), "10.1.2.3", "10.2.3.4", 0, 120, 9999)
+        && !tracker.observe(portal("10.9.8.6"), "10.1.2.3", "10.2.3.4", 0, 120, 9999),
+        "Alternating new networks do not combine evidence")
+    tracker.observe(com.rsplwe.esurfing.utils.NetworkConnectivityResult(ConnectivityStatus.SUCCESS), "10.1.2.3", "10.2.3.4", 0, 120, 9999)
+    verify(!tracker.observe(portal("10.9.8.6"), "10.1.2.3", "10.2.3.4", 0, 120, 9999), "Successful probe resets portal evidence")
+    tracker.observe(com.rsplwe.esurfing.utils.NetworkConnectivityResult(ConnectivityStatus.REQUEST_ERROR), "10.1.2.3", "10.2.3.4", 0, 120, 9999)
+    verify(!tracker.observe(portal("10.9.8.6"), "10.1.2.3", "10.2.3.4", 0, 120, 9999), "Probe error resets consecutive network evidence")
+    tracker.reset()
+    repeat(RuntimeConfig.portalDetectionThreshold) { tracker.observe(portal(), "10.1.2.3", "10.2.3.4", 2, 120, 5) }
+    verify(!tracker.observe(portal(), "10.1.2.3", "10.2.3.4", 2, 120, 5), "Same network keeps ordinary recovery cooldown")
+    verify(!tracker.observe(com.rsplwe.esurfing.utils.NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP),
+        "10.1.2.3", "10.2.3.4", 1, 120, 9999), "Missing-IP result without a portal is not an authentication request")
+    States.acknowledgeAuthorization(States.authorizationRequestVersion)
+    States.requestAuthorization()
+    val olderRequest = States.authorizationRequestVersion
+    States.updateNetworkStatus(ConnectivityStatus.SUCCESS)
+    verify(States.forceAuthorization, "A successful connectivity probe cannot erase accepted recovery")
+    States.requestAuthorization()
+    val newerRequest = States.authorizationRequestVersion
+    States.acknowledgeAuthorization(olderRequest)
+    verify(States.forceAuthorization, "Old login completion cannot acknowledge a newer recovery request")
+    HealthStatus.markHeartbeatSuccess()
+    verify(States.forceAuthorization, "Heartbeat success cannot consume pending portal recovery")
+    States.acknowledgeAuthorization(newerRequest)
+    verify(!States.forceAuthorization, "Matching login completion consumes recovery request")
+
+    HealthStatus.markAuthenticationFailure(AuthenticationFailure("NATIVE_SESSION_REJECTED", true), true)
+    CoreSignals.requestNetworkRecheck()
+    verify(HealthStatus.authenticationBlocked && HealthStatus.authenticationFailure == "NATIVE_SESSION_REJECTED",
+        "Resume recheck preserves the deterministic protocol retry pause")
+    verify(CoreSignals.waitForNetworkMonitor(10) && CoreSignals.waitForClient(10), "Resume recheck wakes both bounded monitors")
+    HealthStatus.clearAuthenticationFailure()
+
     verify(RuntimeConfig.heartbeatIntervalMaxSeconds == 240L, "Heartbeat interval cap")
     RuntimeConfig.setEnhancedConnection(true)
     verify(RuntimeConfig.networkCheckIntervalSeconds == 5L && RuntimeConfig.healthWriteIntervalSeconds == 15L,
