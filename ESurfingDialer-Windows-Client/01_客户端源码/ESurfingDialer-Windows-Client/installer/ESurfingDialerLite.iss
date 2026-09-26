@@ -1,5 +1,5 @@
 #define MyAppName "ESurfingDialer Lite"
-#define MyAppVersion "2.2"
+#define MyAppVersion "2.3"
 #define MyAppPublisher "ESurfingDialer Lite"
 #define MyAppExeName "ESurfingDialerLite.exe"
 #define SourceDir "..\dist\ESurfingDialerLite"
@@ -13,7 +13,7 @@ DefaultDirName={autopf}\ESurfingDialer Lite
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\dist
-OutputBaseFilename=ESurfingDialer-Windows-v2.2-Setup
+OutputBaseFilename=ESurfingDialer-Windows-v2.3-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

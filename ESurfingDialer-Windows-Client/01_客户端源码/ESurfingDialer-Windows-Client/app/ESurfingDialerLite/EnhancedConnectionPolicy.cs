@@ -43,6 +43,10 @@ public static class EnhancedConnectionPolicy
             return "网络检测线程未运行";
         if (health.Authenticated)
             return null;
+        if (health.AuthenticationFailureDeterministic && health.HasAuthenticationFailureFor(startedAt, now, EnhancedHealthSnapshotMaxAge))
+            return null; // The core owns bounded protocol retries; restarting would reset its failure budget.
+        if (health.HasActiveAuthenticationStage(startedAt, now))
+            return null; // Bounded grace for an in-flight request/native initialization, never a perpetual lease.
         if (!health.HasRecentAuthentication(now))
             return "认证心跳长时间未确认";
 

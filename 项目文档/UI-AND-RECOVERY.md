@@ -1,5 +1,7 @@
 # 新版 UI 与连接恢复
 
+> 历史记录：本文主体记录 2.0 时的 UI 与恢复改动、当时的路径和检查数量，不代表 2.3 当前行为。当前版本、构建入口和验证结果以 [项目说明](PROJECT-GUIDE.md)、[认证修复计划](AUTH-REPAIR-PLAN.md) 和 [开发交接记录](DEVELOPMENT-HANDOFF.md) 为准。
+
 本轮为 2.0 的正式本地安装包改动，尚未推送 GitHub。
 Docker 代码仅作为参考，本轮没有修改 Docker 的运行逻辑。
 
@@ -70,12 +72,12 @@ dist/ESurfingDialerLite-UI-Preview/ESurfingDialerLite.exe
 本机已有对应环境，预览无需联网下载依赖；这不是可直接分发给所有电脑的完整离线安装包。
 部署程序本身可以离线，实际校园网认证仍需要连接学校网络。
 
-Visual Studio 请打开本目录的 `ESurfingDialerWindowsClient.slnx`，不要打开合并前旧目录下的同名工程。
+Visual Studio 请打开 Windows 源码根目录的 `ESurfingDialerWindowsClient.slnx`，不要打开合并前旧目录下的同名工程。
 主工程在核心构建完成后会自动把 JAR 复制到输出目录，避免重新生成后缺少 `core/client.jar`。
 
 ## 构建与回归检查
 
-在此源码根目录执行：
+在 `ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client` 源码根目录执行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Core.ps1 -Offline -Regression

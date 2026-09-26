@@ -75,15 +75,20 @@ object DialerApp {
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP -> {
-                                HealthStatus.markError("No parameter detected in url")
+                                // The first redirect need not contain IPs; retain it for bounded portal discovery.
+                                States.portal = networkStatus
+                                HealthStatus.markError(networkStatus.message.takeUnless { it == "ok" } ?: "Portal requires configuration discovery")
                                 if (repeatedLogLimiter.shouldLog("portal-missing-parameters"))
                                     logger.error("No parameter detected in url.")
                                 if (!HealthStatus.authenticated) States.updateNetworkStatus(networkStatus.status)
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
-                                States.userIp = networkStatus.userIp!!
-                                States.acIp = networkStatus.acIp!!
+                                States.portal = networkStatus
+                                if (!HealthStatus.authenticated) {
+                                    States.userIp = networkStatus.userIp!!
+                                    States.acIp = networkStatus.acIp!!
+                                }
                                 val now = System.currentTimeMillis() / 1000
                                 HealthStatus.lastNetworkCheckAt = now
                                 if (!HealthStatus.authenticated) {

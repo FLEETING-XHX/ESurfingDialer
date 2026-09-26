@@ -202,8 +202,9 @@ public partial class MainWindow : Window
             UpdateStatus("已连接");
         }
         else if (_dialer.IsRequested)
-            UpdateStatus("连接中");
-        else if (_currentStatus is "已连接" or "连接中")
+            UpdateStatus(health?.HasAuthenticationFailureFor(_dialer.StartedAt, now,
+                EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true ? "连接失败" : "连接中");
+        else if (_currentStatus is "已连接" or "连接中" or "连接失败")
             UpdateStatus("已断开");
 
         if (_config.EnhancedConnection && _dialer.IsRequested && _dialer.IsRunning

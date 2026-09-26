@@ -41,3 +41,11 @@ tasks.register<JavaExec>("recoveryRegression") {
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
     environment("STATE_DIR", layout.buildDirectory.dir("regression-state").get().asFile.absolutePath)
 }
+
+tasks.register<JavaExec>("authenticationRegression") {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rsplwe.esurfing.AuthenticationRegressionKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+    environment("STATE_DIR", layout.buildDirectory.dir("authentication-regression-state").get().asFile.absolutePath)
+}

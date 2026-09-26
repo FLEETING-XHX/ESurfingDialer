@@ -38,6 +38,10 @@ sh install.sh
 
 安装脚本会检测架构、导入本地镜像、生成 `.env`、创建数据目录并启动容器。
 
+## 开发入口
+
+合并仓库的 [项目说明](../项目文档/PROJECT-GUIDE.md)、[未来开发方向](../项目文档/ROADMAP.md) 和 [开发交接记录](../项目文档/DEVELOPMENT-HANDOFF.md) 集中在根目录的“项目文档”文件夹。两个工具协作时请遵循 [协作规则](../项目文档/协作规则.md)。Windows 认证修复按独立计划推进，不据此推断 Docker 需要同样的协议变更。
+
 ## 致谢
 
 核心认证逻辑来源于 [Itsuwarii/ESurfingDialer](https://github.com/Itsuwarii/ESurfingDialer)。本仓库主要维护 Docker 离线部署、软路由适配、启动脚本、健康检查和发布包。

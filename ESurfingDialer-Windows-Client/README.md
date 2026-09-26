@@ -23,6 +23,10 @@
 
 - `ESurfingDialer-Docker/`
 
+## 开发入口
+
+合并仓库的开发说明集中在[项目文档](../项目文档/)：[项目说明](../项目文档/PROJECT-GUIDE.md)、[未来开发方向](../项目文档/ROADMAP.md)、[认证修复计划](../项目文档/AUTH-REPAIR-PLAN.md) 与 [开发交接记录](../项目文档/DEVELOPMENT-HANDOFF.md)。zcode 和 Codex 共同开发时使用同一个合并仓库，按 [协作规则](../项目文档/协作规则.md) 交接；根目录 `AGENTS.md` 为 Codex 规则入口。
+
 ## 致谢
 
 核心认证逻辑来源于 [Itsuwarii/ESurfingDialer](https://github.com/Itsuwarii/ESurfingDialer)。本仓库主要维护 Windows 客户端打包、安装包发布和使用说明。

@@ -18,6 +18,30 @@ public sealed class HealthSnapshot
     [JsonPropertyName("authenticated")]
     public bool Authenticated { get; set; }
 
+    [JsonPropertyName("authenticationFailure")]
+    public string? AuthenticationFailure { get; set; }
+
+    [JsonPropertyName("authenticationFailureDeterministic")]
+    public bool AuthenticationFailureDeterministic { get; set; }
+
+    [JsonPropertyName("authenticationBlocked")]
+    public bool AuthenticationBlocked { get; set; }
+
+    public bool HasAuthenticationFailureFor(DateTimeOffset startedAt, DateTimeOffset now, TimeSpan? maximumAge = null) =>
+        !Authenticated && !string.IsNullOrWhiteSpace(AuthenticationFailure) && IsCurrentFor(startedAt, now, maximumAge);
+
+    [JsonPropertyName("authenticationStage")]
+    public string? AuthenticationStage { get; set; }
+
+    [JsonPropertyName("authenticationStageStartedAt")]
+    public long AuthenticationStageStartedAt { get; set; }
+
+    public bool HasActiveAuthenticationStage(DateTimeOffset startedAt, DateTimeOffset now) =>
+        !Authenticated
+        && AuthenticationStage is "portal" or "session" or "ticket" or "login" or "confirm"
+        && AuthenticationStageStartedAt >= startedAt.ToUnixTimeSeconds()
+        && now.ToUnixTimeSeconds() - AuthenticationStageStartedAt is >= 0 and < 90;
+
     [JsonPropertyName("enhancedConnection")]
     public bool EnhancedConnection { get; set; }
 
@@ -78,6 +102,6 @@ public sealed class HealthSnapshot
         var updatedAge = LastUpdatedAt > 0 ? now - LastUpdatedAt : -1;
         var heartbeatAge = LastHeartbeatSuccessAt > 0 ? now - LastHeartbeatSuccessAt : -1;
         var error = string.IsNullOrWhiteSpace(LastError) ? "无" : LastError;
-        return $"认证={Authenticated}, 客户端线程={ClientThreadAlive}, 网络线程={NetworkCheckThreadAlive}, 状态更新={updatedAge}s前, 心跳={heartbeatAge}s前, 心跳失败={ConsecutiveHeartbeatFailures}, 错误={error}";
+        return $"认证={Authenticated}, 客户端线程={ClientThreadAlive}, 网络线程={NetworkCheckThreadAlive}, 状态更新={updatedAge}s前, 心跳={heartbeatAge}s前, 心跳失败={ConsecutiveHeartbeatFailures}, 错误={error}, 认证重试={(AuthenticationBlocked ? "已暂停，请断开后重新连接" : "运行中")}";
     }
 }

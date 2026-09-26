@@ -33,7 +33,7 @@ Push-Location $coreDir
 try {
     $gradleArgs = @("shadowJar", "--no-daemon", "--console=plain", "-Dorg.gradle.java.installations.paths=$Jdk21")
     if ($Offline) { $gradleArgs += "--offline" }
-    if ($Regression) { $gradleArgs += "recoveryRegression" }
+    if ($Regression) { $gradleArgs += @("recoveryRegression", "authenticationRegression") }
     & $gradle @gradleArgs
     if ($LASTEXITCODE -ne 0) { throw "Core build failed." }
 }

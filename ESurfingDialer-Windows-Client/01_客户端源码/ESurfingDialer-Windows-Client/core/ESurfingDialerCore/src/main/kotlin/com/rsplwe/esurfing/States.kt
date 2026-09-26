@@ -1,6 +1,7 @@
 package com.rsplwe.esurfing
 
 import com.rsplwe.esurfing.utils.ConnectivityStatus
+import com.rsplwe.esurfing.utils.NetworkConnectivityResult
 import java.io.File
 
 
@@ -13,6 +14,7 @@ object States {
     var macAddress = ""
     @Volatile var userIp = ""
     @Volatile var acIp = ""
+    @Volatile var portal: NetworkConnectivityResult? = null
     var ticket = ""
 
     @Volatile

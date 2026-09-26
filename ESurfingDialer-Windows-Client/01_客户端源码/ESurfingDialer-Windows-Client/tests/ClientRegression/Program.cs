@@ -71,6 +71,49 @@ internal static class Program
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证状态持续丢失", "Sustained authentication loss triggers enhanced recovery");
         healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-11).ToUnixTimeSeconds();
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证心跳长时间未确认", "Unauthenticated core with stale heartbeat triggers enhanced recovery");
+        healthySnapshot.AuthenticationStage = "session";
+        healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(-50).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) == null,
+            "In-flight authentication is not restarted before bounded stage grace");
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddSeconds(-40), now) != null,
+            "Previous process stage cannot suppress recovery");
+        healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(1).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
+            "Future stage timestamp cannot suppress recovery");
+        healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(-90).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
+            "Hung authentication stage expires at ninety seconds");
+        healthySnapshot.AuthenticationStageStartedAt = now.ToUnixTimeSeconds();
+        healthySnapshot.AuthenticationStage = "unknown";
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
+            "Unknown stage cannot grant authentication grace");
+        healthySnapshot.AuthenticationStage = "login";
+        healthySnapshot.ClientThreadAlive = false;
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) == "认证线程未运行",
+            "Stage lease never hides a dead authentication thread");
+        healthySnapshot.ClientThreadAlive = true;
+        healthySnapshot.LastUpdatedAt = now.AddMinutes(-1).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) == "健康状态缺失或已过期",
+            "Stage lease never hides an expired health snapshot");
+        healthySnapshot.LastUpdatedAt = now.ToUnixTimeSeconds();
+        healthySnapshot.AuthenticationStage = null;
+        healthySnapshot.AuthenticationFailure = "NATIVE_SESSION_REJECTED";
+        healthySnapshot.AuthenticationFailureDeterministic = true;
+        healthySnapshot.AuthenticationBlocked = true;
+        Check(healthySnapshot.HasAuthenticationFailureFor(now.AddMinutes(-1), now), "Current protocol failure is visible to UI");
+        Check(!healthySnapshot.HasAuthenticationFailureFor(now.AddSeconds(1), now), "Previous process protocol failure is rejected");
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null,
+            "Supervisor does not reset core protocol retry budget");
+        healthySnapshot.AuthenticationFailureDeterministic = false;
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) != null,
+            "Transient authentication failure remains recoverable");
+        healthySnapshot.AuthenticationFailureDeterministic = true;
+        healthySnapshot.ClientThreadAlive = false;
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证线程未运行",
+            "Protocol failure does not suppress a dead thread");
+        healthySnapshot.ClientThreadAlive = true;
+        healthySnapshot.Authenticated = true;
+        Check(!healthySnapshot.HasAuthenticationFailureFor(now.AddMinutes(-1), now), "Confirmed connection overrides old failure");
         ClientLog.SetSecrets(new[] { "old-regression-secret" });
         Check(ClientLog.Redact("old-regression-secret") == "[REDACTED]", "Current log secret is redacted");
         ClientLog.SetSecrets(new[] { "new-regression-secret" });
@@ -171,10 +214,16 @@ internal static class Program
             Call("UpdateStatus", "已连接");
             Check(Node<System.Windows.Shapes.Ellipse>("CampusStatusDot").Fill == window.FindResource("Green"),
                 "Campus button retains working connection indicator");
+            Call("UpdateStatus", "连接失败");
+            Check(Node<TextBlock>("CampusStatusText").Text == "连接失败"
+                  && Node<System.Windows.Shapes.Ellipse>("CampusStatusDot").Fill == window.FindResource("Coral"),
+                "Authentication failure is visible on connection card");
             Call("UpdateStatus", "未连接");
             Render("home");
             var navIcons = new[] { "Home", "Logs", "Settings" }.Select(n => Node<ContentControl>(n + "NavIcon")).ToArray();
-            Check(navIcons.All(n => Math.Abs(n.ActualWidth - 21) < 0.25 && Math.Abs(n.ActualHeight - 21) < 0.25),
+            var dpi = VisualTreeHelper.GetDpi(root);
+            Check(navIcons.All(n => Math.Abs(n.ActualWidth - 21) <= 1 / dpi.DpiScaleX
+                                   && Math.Abs(n.ActualHeight - 21) <= 1 / dpi.DpiScaleY),
                 "Navigation icons share Pen dimensions");
             var iconTop = navIcons[0].TransformToAncestor(root).Transform(new Point()).Y;
             Check(navIcons.All(n => Math.Abs(n.TransformToAncestor(root).Transform(new Point()).Y - iconTop) < 0.1), "Navigation icons share baseline");

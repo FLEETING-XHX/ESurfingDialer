@@ -4,6 +4,7 @@ import com.github.unidbg.AndroidEmulator
 import com.github.unidbg.linux.android.dvm.DvmClass
 import com.github.unidbg.linux.android.dvm.DvmObject
 import com.rsplwe.esurfing.States
+import com.rsplwe.esurfing.NativeSessionLoader
 import org.apache.log4j.Logger
 
 class Session(zsm: ByteArray) {
@@ -16,9 +17,10 @@ class Session(zsm: ByteArray) {
     
     init {
         logger.info("Initializing Session...")
-        sessionId = this.load(zsm)
+        val loaded = NativeSessionLoader.load({ this.load(zsm) }, { this.getAlgoId(it) }, { this.freeHandle(it) })
+        sessionId = loaded.first
         clientId = States.clientId
-        States.algoId = this.getAlgoId()
+        States.algoId = loaded.second
     }
 
     private fun load(zsm: ByteArray): Long {
@@ -30,8 +32,8 @@ class Session(zsm: ByteArray) {
         return String((r.value as ByteArray))
     }
 
-    private fun getAlgoId(): String {
-        val r: DvmObject<*> = method.callStaticJniMethodObject(emulator, "aid(J)Ljava/lang/String;", sessionId)
+    private fun getAlgoId(handle: Long): String {
+        val r: DvmObject<*> = method.callStaticJniMethodObject(emulator, "aid(J)Ljava/lang/String;", handle)
         return r.value as String
     }
 
@@ -50,6 +52,10 @@ class Session(zsm: ByteArray) {
     }
 
     fun free() {
-        method.callStaticJniMethodObject<DvmObject<*>>(emulator, "free(J)V", sessionId)
+        freeHandle(sessionId)
+    }
+
+    private fun freeHandle(handle: Long) {
+        method.callStaticJniMethod(emulator, "free(J)V", handle)
     }
 }
