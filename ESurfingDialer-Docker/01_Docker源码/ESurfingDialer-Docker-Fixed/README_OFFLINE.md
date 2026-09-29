@@ -34,12 +34,14 @@ docker compose up -d --no-build --pull never
 `.env` 至少填写：
 
 ```dotenv
-DIALER_USER=你的校园网账号
-DIALER_PASSWORD=你的校园网密码
+DIALER_USER="你的校园网账号"
+DIALER_PASSWORD="你的校园网密码"
 AUTO_REAUTH_ENABLED=1
 AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4
 AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 ```
+
+手动编辑 `.env` 的双引号凭据时，`$` 写成 `$$`，`\` 写成 `\\`，`"` 写成 `\"`；空格、单引号和 `#` 保留在双引号内。例如实际密码 `ab$cd` 应写成 `DIALER_PASSWORD="ab$$cd"`。已有配置中的凭据需要自行核对，更新镜像不会自动修复原先的写法。
 
 ## 重要说明
 

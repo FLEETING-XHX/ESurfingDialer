@@ -10,10 +10,12 @@ data class PortalCandidate(val portalUrl: String? = null, val portalBody: String
 /** Captured once; a probe may update the candidate but cannot change this session. */
 data class AuthenticationContext(val endpoints: AuthenticationEndpoints, val clientId: String, val mac: String)
 
-fun rememberPortal(result: NetworkConnectivityResult) {
-    States.portalCandidate = PortalCandidate(result.portalUrl, result.portalBody, result.userIp.orEmpty(), result.acIp.orEmpty())
+fun rememberPortal(result: NetworkConnectivityResult): PortalCandidate {
+    val candidate = PortalCandidate(result.portalUrl, result.portalBody, result.userIp.orEmpty(), result.acIp.orEmpty())
+    States.portalCandidate = candidate
     States.userIp = result.userIp.orEmpty()
     States.acIp = result.acIp.orEmpty()
+    return candidate
 }
 
 interface AuthenticationSession {

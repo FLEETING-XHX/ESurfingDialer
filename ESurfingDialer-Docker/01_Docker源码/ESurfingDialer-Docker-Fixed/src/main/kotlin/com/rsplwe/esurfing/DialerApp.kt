@@ -61,16 +61,16 @@ object DialerApp {
                 while (isRunning) {
                     try {
                         val networkStatus = try { checkConnectivity() } finally { HealthStatus.markNetworkCheckCompleted() }
+                        if (!isRunning) break
                         ReauthPlanner.observeNetwork(networkStatus)
 
                         when (networkStatus.status) {
                             ConnectivityStatus.SUCCESS -> {
                                 HealthStatus.markNetworkCheckSuccess()
-                                States.networkStatus = ConnectivityStatus.SUCCESS
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
-                                rememberPortal(networkStatus)
+                                val candidate = rememberPortal(networkStatus)
                                 HealthStatus.markNetworkCheckObserved()
                                 if (HealthStatus.authenticated) {
                                     val authAge = HealthStatus.secondsSinceLastAuthSuccess()
@@ -86,34 +86,29 @@ object DialerApp {
                                         if (portalThresholdReached || heartbeatCorroborated) {
                                             val cooldownAge = HealthStatus.secondsSinceLastPortalReauthRequest()
                                             if (cooldownAge >= RuntimeConfig.portalReauthCooldownSeconds) {
-                                                HealthStatus.markPortalReauthRequested()
-                                                logger.warn("PORTAL_REAUTH_REQUESTED count=$count authAge=${authAge}s heartbeatFailures=$heartbeatFailures")
-                                                States.networkStatus = networkStatus.status
+                                                if (States.requestAuthorization(candidate)) {
+                                                    HealthStatus.markPortalReauthRequested()
+                                                    logger.warn("PORTAL_REAUTH_REQUESTED count=$count authAge=${authAge}s heartbeatFailures=$heartbeatFailures")
+                                                }
                                             } else {
                                                 logger.warn("PORTAL_REAUTH_SUPPRESSED_COOLDOWN count=$count cooldownAge=${cooldownAge}s")
                                             }
                                         }
                                     }
                                 } else {
-                                    HealthStatus.markNetworkCheckSuccess()
-                                    States.networkStatus = networkStatus.status
+                                    States.requestInitialAuthorization(candidate)
                                 }
                             }
 
                             ConnectivityStatus.REQUEST_ERROR -> {
                                 HealthStatus.markError(networkStatus.message)
                                 logger.error("Request Error: ${networkStatus.message}")
-                                if (!HealthStatus.authenticated) {
-                                    States.networkStatus = networkStatus.status
-                                }
                             }
 
-                            ConnectivityStatus.DEFAULT -> {
-                                if (!HealthStatus.authenticated) {
-                                    States.networkStatus = networkStatus.status
-                                }
-                            }
+                            ConnectivityStatus.DEFAULT -> Unit
                         }
+                        // Publish after the candidate/request; this observation never clears pending work.
+                        States.networkStatus = networkStatus.status
                         sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
                     } catch (e: InterruptedException) {
                         currentThread().interrupt()

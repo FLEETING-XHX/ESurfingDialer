@@ -13,12 +13,14 @@ cp .env.example .env
 2. 编辑 `.env`，填写：
 
 ```dotenv
-DIALER_USER=你的账号
-DIALER_PASSWORD=你的密码
+DIALER_USER="你的账号"
+DIALER_PASSWORD="你的密码"
 AUTO_REAUTH_ENABLED=1
 AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4
 AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 ```
+
+手动编辑账号密码时，按 Compose 双引号格式填写：美元符号 `$` 写成 `$$`，反斜线 `\` 写成 `\\`，双引号 `"` 写成 `\"`；空格、单引号和 `#` 保留在双引号内。例如实际密码 `ab$cd` 写成 `DIALER_PASSWORD="ab$$cd"`。新版源码中的安装脚本会自动转义交互输入；已有 `.env` 不会自动重写凭据。
 
 3. 构建并启动：
 
@@ -85,6 +87,8 @@ AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 如学校认证系统要求使用真实 WAN MAC，可设置 `DIALER_MAC_ADDRESS`。否则首次启动会生成并保存一个稳定的本地身份。
 
 `AUTO_REAUTH_ENABLED` 设为 `1` 时启用“自动推算下次认证并在安全窗口重认证”，设为 `0` 时关闭，仍保留原来的心跳和掉线重登逻辑。
+
+当前源码的联网探测只把空正文的 HTTP 204，或 `www.msftconnecttest.com/connecttest.txt` 返回的 HTTP 200 与精确文本 `Microsoft Connect Test` 视为成功。自定义 `NETWORK_CHECK_URLS` 请使用返回空 HTTP 204 的探测端点。其他 200 页面会继续检查后续地址；全部无法确认时报告 `PROBE_UNEXPECTED_RESPONSE_200`，不会作为联网成功。此源码修复尚未加入历史部署包。
 
 ## 构建
 

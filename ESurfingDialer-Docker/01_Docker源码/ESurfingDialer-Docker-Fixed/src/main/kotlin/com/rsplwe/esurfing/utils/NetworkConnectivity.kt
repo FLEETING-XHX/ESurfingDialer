@@ -2,12 +2,12 @@ package com.rsplwe.esurfing.utils
 
 import cn.yescallop.fluenturi.Uri
 import com.rsplwe.esurfing.Constants
-import com.rsplwe.esurfing.HealthStatus
 import com.rsplwe.esurfing.RuntimeConfig
 import com.rsplwe.esurfing.AuthenticationFailure
 import com.rsplwe.esurfing.PortalConfiguration
 import com.rsplwe.esurfing.network.createProbeHttpClient
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 import java.net.URLDecoder
@@ -39,14 +39,13 @@ fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls, clien
     for (url in urls.take(8)) {
         val remaining = deadline - System.nanoTime()
         if (remaining <= 0) { errors += "PROBE_BUDGET_EXCEEDED"; break }
-        val request = Request.Builder()
-            .removeHeader("User-Agent")
-            .addHeader("User-Agent", Constants.USER_AGENT)
-            .addHeader("Accept", Constants.REQUEST_ACCEPT)
-            .url(url)
-            .build()
-
         try {
+            val request = Request.Builder()
+                .removeHeader("User-Agent")
+                .addHeader("User-Agent", Constants.USER_AGENT)
+                .addHeader("Accept", Constants.REQUEST_ACCEPT)
+                .url(url)
+                .build()
             val call = client.newCall(request)
             call.timeout().timeout(remaining, TimeUnit.NANOSECONDS)
             call.execute().use { response ->
@@ -58,10 +57,14 @@ fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls, clien
                     200, 204 -> {
                         val bytes = response.peekBody(128 * 1024L + 1).bytes()
                         if (bytes.size > 128 * 1024) throw AuthenticationFailure("PROBE_BODY_TOO_LARGE")
-                        val portalResult = parsePortalBody(bytes.toString(Charsets.UTF_8), response.request.url.toString())
+                        val body = bytes.toString(Charsets.UTF_8)
+                        val portalResult = parsePortalBody(body, response.request.url.toString())
                         if (portalResult != null) return portalResult
-                        HealthStatus.markNetworkCheckSuccess()
-                        return NetworkConnectivityResult(status = ConnectivityStatus.SUCCESS)
+                        // An arbitrary login/error/JS page returning 200 is not proof of Internet access.
+                        if (isExpectedProbeResponse(response.request.url, response.code, body)) {
+                            return NetworkConnectivityResult(status = ConnectivityStatus.SUCCESS)
+                        }
+                        errors += "PROBE_UNEXPECTED_RESPONSE_${response.code}"
                     }
                     else -> errors += "PROBE_HTTP_${response.code}"
                 }
@@ -72,6 +75,14 @@ fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls, clien
     }
     val message = errors.joinToString("; ").ifBlank { "all network checks failed" }
     return NetworkConnectivityResult(ConnectivityStatus.REQUEST_ERROR, message = message)
+}
+
+private fun isExpectedProbeResponse(url: HttpUrl, code: Int, body: String): Boolean {
+    if (url.host == "www.msftconnecttest.com" && url.encodedPath == "/connecttest.txt") {
+        return code == 200 && body == "Microsoft Connect Test"
+    }
+    // Built-in generate_204 endpoints and custom probes must return an empty 204.
+    return code == 204 && body.isEmpty()
 }
 
 private fun parseRedirect(location: String?): NetworkConnectivityResult {

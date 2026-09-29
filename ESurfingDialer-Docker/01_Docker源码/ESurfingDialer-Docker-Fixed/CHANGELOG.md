@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — 2026-09-29 Docker beta follow-up
+
+- Preserve the local bounded portal parser, safe diagnostics and failed-cache refresh fixes from September 28.
+- Validate expected probe status/body; continue past unexpected HTTP 200 responses instead of declaring connectivity.
+- Keep accepted authorization requests independently of network observations, capture their portal/version, and acknowledge only the completed version. Retain failed requests for bounded retries, refresh same-portal cached pages and honor shutdown between stages.
+- Encode installer credentials for Compose dotenv, including dollars, quotes, whitespace and backslashes; create new configuration with a restrictive umask and document manual escaping.
+- Source changes only. Existing beta2 archives/images are unchanged; regression, Compose runtime and campus verification remain pending.
+
 ## 2026-09-26 v1.4.0-beta.2 (local testing only)
 
 - Respect stopped/paused containers; add per-container watchdog locking, pause and cooldown, without docker start/restart operations.

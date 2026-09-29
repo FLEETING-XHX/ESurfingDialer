@@ -4,6 +4,8 @@
 
 源码入口和打包方法见 [Windows 工程说明](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/README.md)，测试范围见 [v2.3beta 测试说明](V2.3BETA-RELEASE.md)。下文构建命令的工作目录为 `ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client`。
 
+2026-09-29 复查：下表“已实现”描述此前完成的边界，不代表同一模块没有其他缺陷。当前仍有 8 项待修复，详见 [Windows 后续检查](WINDOWS-FOLLOWUP-REVIEW-2026-09-29.md)：联网探测、已登录心跳进展、增强恢复计数、门户结构/缓存/末跳参数、待认证请求交接、启动失败重试和重复启动隔离。本轮仅检查与局部复现，尚未修改产品代码。
+
 | 顺序 | 问题与修复 | 验收条件 | 状态 |
 | --- | --- | --- | --- |
 | 1 | ticket 失败只有笼统错误：记录 HTTP、媒体类型、有限响应长度、ZSM 结构与受控 UUID；区分网络、响应和原生阶段 | 模拟服务器覆盖错误响应、空响应、超限与截断；日志不含正文、票据、句柄或完整 URL | 已实现，本地验证通过 |

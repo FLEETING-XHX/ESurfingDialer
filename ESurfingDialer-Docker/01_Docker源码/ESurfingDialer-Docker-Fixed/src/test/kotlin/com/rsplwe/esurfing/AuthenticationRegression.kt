@@ -34,6 +34,7 @@ object AuthenticationRegression {
         nativeLifecycle()
         portalHttp()
         clientIntegration()
+        checks += PortalRegression.run()
         println("Docker authentication regression: $checks checks passed")
     }
 
@@ -104,12 +105,12 @@ object AuthenticationRegression {
 
     private fun portalHttp() {
         verify("inline portal config", PortalConfiguration.parse(config)?.userIp == "10.1.2.3")
-        fails("PORTAL_CONFIG_INVALID") { PortalConfiguration.parse(config + config) }
-        fails("PORTAL_CONFIG_INVALID") { PortalConfiguration.parse(config.replace("<auth-url>", "<auth-url>http://a/auth.cgi</auth-url><auth-url>")) }
+        fails("PORTAL_CONFIG_DUPLICATE") { PortalConfiguration.parse(config + config) }
+        fails("PORTAL_AUTH_URL_DUPLICATE") { PortalConfiguration.parse(config.replace("<auth-url>", "<auth-url>http://a/auth.cgi</auth-url><auth-url>")) }
         fails("PORTAL_CONFIG_TRUNCATED") { PortalConfiguration.parse(config.substringBefore("//config.campus.js.chinatelecom.com-->")) }
         fails("PORTAL_IP_INVALID") { PortalConfiguration.parse(config.replace("10.1.2.3", "999.1.2.3")) }
-        fails("PORTAL_CONFIG_INVALID") { PortalConfiguration.parse(config.replace("auth.cgi", "evil.cgi")) }
-        fails("PORTAL_INVALID_URL") { PortalConfiguration.parse(config.replace("auth.test", "localhost")) }
+        fails("PORTAL_ENDPOINT_PATH_INVALID") { PortalConfiguration.parse(config.replace("auth.cgi", "evil.cgi")) }
+        fails("PORTAL_AUTH_URL_INVALID") { PortalConfiguration.parse(config.replace("auth.test", "localhost")) }
         verify("valid legacy fallback", PortalConfiguration.legacy("10.2.3.4", "10.2.3.1").source == "legacy_fallback")
         fails("PORTAL_IP_INVALID") { PortalConfiguration.legacy("", "") }
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

@@ -30,6 +30,9 @@ class Client(
     private var keepRetrySeconds = RuntimeConfig.loginRetryInitialSeconds
     private var loginFailures = 0
     private var recoveries = 0
+    private val failureReports = AuthenticationFailureReports()
+    private var attemptedPortal = PortalCandidate()
+    private var lastFailedPortal: PortalCandidate? = null
 
     @Volatile var session: AuthenticationSession? = null
         private set
@@ -46,23 +49,31 @@ class Client(
     override fun run() {
         HealthStatus.clientThreadAlive = true
         logger.info("APPLICATION_STARTED")
+        try {
+            runLoop()
+        } catch (_: InterruptedException) {
+            // Includes interrupts received while waiting inside an exception handler.
+            Thread.currentThread().interrupt()
+            logger.warn("CLIENT_THREAD_INTERRUPTED")
+        } finally {
+            States.cancelAuthorization()
+            HealthStatus.clientThreadAlive = false
+            // NIO file writes abort on an interrupted thread. Publish the final status, then restore it.
+            val interrupted = Thread.interrupted()
+            try { HealthStatus.write() }
+            finally { if (interrupted) Thread.currentThread().interrupt() }
+            logger.warn("CLIENT_THREAD_EXITED")
+        }
+    }
+
+    private fun runLoop() {
         while (isRunning) {
             try {
                 HealthStatus.markClientProgress("loop")
-                if (session != null && HealthStatus.authenticated && ReauthPlanner.shouldTriggerScheduledReauth()) {
-                    logger.info(
-                        "SCHEDULED_REAUTH_TRIGGERED nextAt=${ReauthPlanner.formatEpoch(ReauthPlanner.snapshot().nextPlannedReauthAt)} " +
-                            "window=${ReauthPlanner.safeWindowLabel()}"
-                    )
-                    authorization(AuthorizationTrigger.SCHEDULED)
+                if (States.hasPendingAuthorization()) {
+                    authorization(AuthorizationTrigger.PORTAL)
                     continue
                 }
-
-                if (States.networkStatus == DEFAULT) {
-                    sleep(1000)
-                    continue
-                }
-
                 if (session != null && HealthStatus.authenticated && ReauthPlanner.shouldTriggerScheduledReauth()) {
                     logger.info(
                         "SCHEDULED_REAUTH_TRIGGERED nextAt=${ReauthPlanner.formatEpoch(ReauthPlanner.snapshot().nextPlannedReauthAt)} " +
@@ -83,7 +94,7 @@ class Client(
                     }
                 }
 
-                if (session != null && HealthStatus.authenticated && States.networkStatus != IS_REDIRECTS_FOUND_IP && States.networkStatus != IS_REDIRECTS_NOT_FOUND_IP) {
+                if (session != null && HealthStatus.authenticated) {
                     if ((System.currentTimeMillis() - tick) >= (keepRetrySeconds * 1000)) {
                         logger.info("HEARTBEAT_ATTEMPT")
                         try {
@@ -101,7 +112,7 @@ class Client(
                                 // term request can consume another 30 seconds and delay the
                                 // next login, so let the old session expire remotely.
                                 resetSessionState("heartbeat failure threshold reached")
-                                States.networkStatus = DEFAULT
+                                States.requestAuthorization(States.portalCandidate)
                             } else {
                                 keepRetrySeconds = (failures * 5L).coerceAtMost(30)
                             }
@@ -112,7 +123,7 @@ class Client(
                     continue
                 }
 
-                if (States.networkStatus == SUCCESS) {
+                if (States.networkStatus == SUCCESS || States.networkStatus == DEFAULT) {
                     sleep(500)
                     continue
                 }
@@ -123,7 +134,8 @@ class Client(
                 }
 
                 if (States.networkStatus == REQUEST_ERROR) {
-                    waitForRetry(RuntimeConfig.networkCheckIntervalSeconds)
+                    // Keep accepted requests responsive even with a long network probe interval.
+                    waitForRetry(minOf(RuntimeConfig.networkCheckIntervalSeconds, 5))
                     continue
                 }
 
@@ -134,6 +146,15 @@ class Client(
                 Thread.currentThread().interrupt()
                 logger.warn("CLIENT_THREAD_INTERRUPTED")
                 break
+            } catch (e: AuthenticationFailure) {
+                ReauthPlanner.invalidateSample()
+                HealthStatus.markError(e.code + (e.portalDiagnostics?.let { " ${it.summary()}" } ?: ""))
+                resetSessionState("authorization failed", log = false)
+                if (attemptedPortal != lastFailedPortal) loginFailures = 0
+                lastFailedPortal = attemptedPortal
+                val delay = nextLoginRetrySeconds()
+                failureReports.report(e, attemptedPortal, delay)?.let { logger.warn(it) }
+                waitForRetry(delay, attemptedPortal)
             } catch (e: Exception) {
                 ReauthPlanner.invalidateSample()
                 HealthStatus.markError("client loop recovered: ${e.message}")
@@ -143,36 +164,37 @@ class Client(
                 waitForRetry(delay)
             }
         }
-        HealthStatus.clientThreadAlive = false
-        HealthStatus.write()
-        logger.warn("CLIENT_THREAD_EXITED")
     }
 
     @Synchronized private fun authorization(trigger: AuthorizationTrigger) {
-        if (!isRunning) return
+        val request = States.beginAuthorization(trigger) ?: return
+        attemptedPortal = request.candidate
         if (session != null) {
-            val reason = when (trigger) {
+            val reason = when (request.trigger) {
                 AuthorizationTrigger.SCHEDULED -> "scheduled reauthorization"
                 AuthorizationTrigger.PORTAL -> "portal-triggered reauthorization"
                 AuthorizationTrigger.INITIAL -> "initial authorization"
             }
             resetSessionState(reason, terminateRemote = true)
         } else {
-            val reason = when (trigger) {
+            val reason = when (request.trigger) {
                 AuthorizationTrigger.SCHEDULED -> "starting scheduled authorization"
                 AuthorizationTrigger.PORTAL -> "starting authorization"
                 AuthorizationTrigger.INITIAL -> "starting initial authorization"
             }
-            clearSessionState(reason)
+            clearSessionState(reason, log = false)
         }
+        if (!isRunning) return
         States.algoId = "00000000-0000-0000-0000-000000000000"
 
         HealthStatus.markClientProgress("portal_discovery", 60)
-        context = AuthenticationContext(States.portalCandidate.discover(), States.clientId, States.macAddress)
+        context = AuthenticationContext(attemptedPortal.discover(), States.clientId, States.macAddress)
+        if (!isRunning) return
         sessionAlgorithm = States.algoId
         logger.info("LOGIN_ATTEMPT endpointSource=${active().endpoints.source}")
         HealthStatus.markClientProgress("native_init", 120)
         initSession()
+        if (!isRunning) return
         if ((session?.getSessionId() ?: 0) == 0.toLong()) {
             HealthStatus.markError("failed to initialize session")
             logger.error("LOGIN_FAILED failed to initialize session")
@@ -184,9 +206,11 @@ class Client(
 
         HealthStatus.markClientProgress("ticket", 120)
         ticket = getTicket()
+        if (!isRunning) return
         logger.info("TICKET_RECEIVED")
         HealthStatus.markClientProgress("login", 120)
         login()
+        if (!isRunning) return
 
         if (keepUrl.isEmpty()) {
             HealthStatus.markError("keepUrl is empty")
@@ -198,20 +222,21 @@ class Client(
 
         HealthStatus.markClientProgress("confirmation", (RuntimeConfig.loginConfirmationAttempts * (RuntimeConfig.loginConfirmationIntervalSeconds + 90)).coerceAtMost(600))
         if (!confirmAuthentication()) {
+            if (!isRunning) return
             HealthStatus.markError("login response was not confirmed by connectivity checks")
             logger.error("LOGIN_NOT_CONFIRMED portal remained after login response")
             resetSessionState("login not confirmed", terminateRemote = true)
-            States.networkStatus = DEFAULT
             waitForRetry(nextLoginRetrySeconds())
             return
         }
 
-        States.networkStatus = SUCCESS
+        if (!States.completeAuthorization(request.version)) return
         loginFailures = 0
+        lastFailedPortal = null
+        failureReports.reset()
         recoveries = 0
         tick = System.currentTimeMillis()
-        ReauthPlanner.recordAuthSuccess(trigger, networkKey = ReauthPlanner.networkKey(active().endpoints.userIp, active().endpoints.acIp))
-        HealthStatus.markLoginSuccess()
+        ReauthPlanner.recordAuthSuccess(request.trigger, networkKey = ReauthPlanner.networkKey(active().endpoints.userIp, active().endpoints.acIp))
         logger.info("LOGIN_SUCCESS")
     }
 
@@ -339,8 +364,10 @@ class Client(
     private fun confirmAuthentication(): Boolean {
         var sawPortal = false
         repeat(RuntimeConfig.loginConfirmationAttempts) { index ->
+            if (!isRunning) return false
             HealthStatus.markClientProgress("confirmation_wait", RuntimeConfig.loginConfirmationIntervalSeconds + 15)
             sleep(RuntimeConfig.loginConfirmationIntervalSeconds * 1000)
+            if (!isRunning) return false
             try {
                 // The keep endpoint is the authoritative proof that the login
                 // response was accepted.  A probe can be inconclusive behind a
@@ -349,18 +376,19 @@ class Client(
                 logger.info("LOGIN_CONFIRMED attempt=${index + 1}")
                 return true
             } catch (heartbeatError: Exception) {
+                if (!isRunning) return false
                 HealthStatus.markClientProgress("confirmation_probe", RuntimeConfig.networkProbeBudgetSeconds + 15)
                 val result = probe()
                 ReauthPlanner.observeNetwork(result)
                 when (result.status) {
                     IS_REDIRECTS_FOUND_IP -> {
                         sawPortal = true
-                        rememberPortal(result)
+                        States.requestInitialAuthorization(rememberPortal(result))
                         logger.warn("LOGIN_CONFIRMATION_PORTAL attempt=${index + 1} userIp=${States.userIp} acIp=${States.acIp} heartbeat=${heartbeatError.message}")
                     }
 
                     IS_REDIRECTS_NOT_FOUND_IP -> {
-                        rememberPortal(result)
+                        States.requestInitialAuthorization(rememberPortal(result))
                         sawPortal = true
                         logger.warn("LOGIN_CONFIRMATION_PORTAL_MISSING_IP attempt=${index + 1} heartbeat=${heartbeatError.message}")
                     }
@@ -375,7 +403,7 @@ class Client(
         return false
     }
 
-    @Synchronized private fun resetSessionState(reason: String, terminateRemote: Boolean = false) {
+    @Synchronized private fun resetSessionState(reason: String, terminateRemote: Boolean = false, log: Boolean = true) {
         val hadSession = session != null || HealthStatus.authenticated
         if (terminateRemote && session != null) {
             try {
@@ -384,7 +412,7 @@ class Client(
                 logger.warn("SESSION_TERMINATE_RECOVERY_FAILED ${e.message}")
             }
         }
-        clearSessionState(reason)
+        clearSessionState(reason, log)
         if (!hadSession) return
         recoveries++
         if (recoveries >= RuntimeConfig.maxRecoveriesBeforeExit) {
@@ -394,8 +422,8 @@ class Client(
         }
     }
 
-    @Synchronized private fun clearSessionState(reason: String) {
-        logger.warn("SESSION_RESET reason=$reason")
+    @Synchronized private fun clearSessionState(reason: String, log: Boolean = true) {
+        if (log) logger.warn("SESSION_RESET reason=$reason")
         HealthStatus.markClientProgress("native_cleanup", 120)
         try {
             session?.free()
@@ -414,12 +442,14 @@ class Client(
     }
 
     @Synchronized fun shutdown() {
+        States.cancelAuthorization()
         try { term() } finally { clearSessionState("shutdown") }
     }
 
-    private fun waitForRetry(seconds: Long) {
+    private fun waitForRetry(seconds: Long, failedPortal: PortalCandidate? = null) {
         var remaining = seconds
         while (remaining > 0 && isRunning) {
+            if (failedPortal != null && States.retryCandidate() != failedPortal) return
             val chunk = minOf(remaining, 5)
             HealthStatus.markClientProgress("retry_wait", chunk + 15)
             sleep(chunk * 1000)

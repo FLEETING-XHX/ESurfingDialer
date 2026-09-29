@@ -1,6 +1,7 @@
 package com.rsplwe.esurfing
 
-class AuthenticationFailure(val code: String, val deterministic: Boolean = false) : IllegalStateException(code)
+class AuthenticationFailure(val code: String, val deterministic: Boolean = false,
+                            val portalDiagnostics: PortalDiagnostics? = null) : IllegalStateException(code)
 
 /** Pure boundary around native loading, so rejected handles and cleanup can be regression tested. */
 object NativeSessionLoader {
