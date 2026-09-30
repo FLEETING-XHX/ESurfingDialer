@@ -18,6 +18,7 @@ internal static partial class Program
             timer.Start();
             try { Dispatcher.PushFrame(frame); }
             finally { timer.Stop(); }
+            if (_dispatcherFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(_dispatcherFailure).Throw();
             if (!task.IsCompleted) throw new TimeoutException("WPF operation did not complete");
         }
         task.GetAwaiter().GetResult();

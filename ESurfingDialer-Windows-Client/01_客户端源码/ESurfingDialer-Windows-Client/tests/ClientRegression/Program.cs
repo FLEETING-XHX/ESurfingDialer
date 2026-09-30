@@ -12,7 +12,9 @@ internal static partial class Program
 {
     private static int _checks;
     [STAThread]
-    private static void Main(string[] args)
+    private static int Main(string[] args) => RunHarness(args);
+
+    private static void Run(string[] args)
     {
         if (args.Contains("--idle")) { Console.ReadLine(); return; }
         if (args.Length == 2 && args[0] == "--instance")
@@ -20,6 +22,11 @@ internal static partial class Program
             using var instance = new SingleInstanceCoordinator(args[1], () => { });
             Console.WriteLine(instance.IsOwner ? "owner" : "secondary");
             if (instance.IsOwner) Console.ReadLine();
+            return;
+        }
+        if (args.Contains("--failure-fixture") || args.Contains("--dispatcher-failure-fixture"))
+        {
+            FailureFixture(args);
             return;
         }
         var output = Path.GetFullPath(args.FirstOrDefault() ?? "artifacts/ui");
@@ -142,6 +149,8 @@ internal static partial class Program
               && ClientLog.Redact("new-regression-secret") == "[REDACTED]", "Log secret cache replaces stale values");
 
         var app = new System.Windows.Application();
+        app.DispatcherUnhandledException += (_, e) => { _dispatcherFailure = e.Exception; e.Handled = true; };
+        SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
         var window = new MainWindow(previewMode: true);
         try
         {
@@ -300,6 +309,7 @@ internal static partial class Program
             PasswordChecks(window);
             StatusChecks(window, output);
             AccountFailureChecks(window);
+            HarnessChecks(output);
             InstanceChecks(output);
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));
@@ -320,11 +330,13 @@ internal static partial class Program
     private static System.Diagnostics.Process Worker(params string[] arguments)
     {
         var info = new System.Diagnostics.ProcessStartInfo("dotnet") {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
         };
         info.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
-        return System.Diagnostics.Process.Start(info)!;
+        var process = System.Diagnostics.Process.Start(info)!;
+        OwnedWorkers.TryAdd(process.Id, process.StartTime.ToUniversalTime());
+        return process;
     }
 
     private static void InstanceChecks(string output)
@@ -395,6 +407,7 @@ internal static partial class Program
 
     private static void Check(bool condition, string name)
     {
+        if (_dispatcherFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(_dispatcherFailure).Throw();
         if (!condition) throw new Exception("FAIL: " + name);
         _checks++; Console.WriteLine("PASS: " + name);
     }
