@@ -20,13 +20,15 @@ public partial class MainWindow
         {
             var candidate = _config.Copy();
             var account = candidate.Accounts.FirstOrDefault(a => a.Id == _editingId) ?? new CampusAccount();
-            var reconnect = candidate.SelectedAccountId == account.Id && _dialer.IsRequested;
+            var isCurrent = candidate.SelectedAccountId == account.Id;
+            var reconnect = isCurrent && _dialer.IsRequested;
+            var stopConnection = isCurrent && (_dialer.IsRequested || _dialer.IsRunning);
             account.UserName = username;
             account.Name = AccountNameTextBox.Text.Trim();
             account.ProtectedPassword = PasswordProtector.Protect(PasswordBox.Password);
             if (!candidate.Accounts.Contains(account)) candidate.Accounts.Add(account);
             candidate.SelectedAccountId ??= account.Id;
-            if (!await ApplyAccountChangeAsync(candidate, reconnect)) return;
+            if (!await ApplyAccountChangeAsync(candidate, stopConnection)) return;
             ShowAccountList();
             Notify("账户已保存");
             if (reconnect && !_disposed) await StartDialerAsync();
@@ -44,7 +46,7 @@ public partial class MainWindow
         {
             var candidate = _config.Copy();
             candidate.SelectedAccountId = id;
-            if (!await ApplyAccountChangeAsync(candidate, reconnect)) return;
+            if (!await ApplyAccountChangeAsync(candidate, reconnect || _dialer.IsRunning)) return;
             RefreshAccounts();
             CloseAccounts();
             AddSummary("账户已切换", "当前校园网账户已更新。", "Offline");
@@ -62,7 +64,7 @@ public partial class MainWindow
             candidate.Accounts.RemoveAll(a => a.Id == id);
             var current = candidate.SelectedAccountId == id;
             if (current) candidate.SelectedAccountId = candidate.Accounts.FirstOrDefault()?.Id;
-            if (!await ApplyAccountChangeAsync(candidate, current && _dialer.IsRequested)) return;
+            if (!await ApplyAccountChangeAsync(candidate, current && (_dialer.IsRequested || _dialer.IsRunning))) return;
             RefreshAccounts();
             Notify("账户已删除");
         }

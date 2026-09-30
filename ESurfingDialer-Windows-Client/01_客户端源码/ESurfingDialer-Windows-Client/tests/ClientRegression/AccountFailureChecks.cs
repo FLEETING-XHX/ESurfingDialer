@@ -94,6 +94,11 @@ internal static partial class Program
             Check(store.Load().SelectedAccountId == other.Id, "Successful switch persists selected account");
             Call("DeleteAccountAsync", current.Id);
             Check(store.Load().Accounts.Count == 1, "Successful deletion persists only remaining account");
+            var retained = Worker("--idle");
+            typeof(DialerCoreProcess).GetField("_process", flags)!.SetValue(dialer, retained);
+            typeof(DialerCoreProcess).GetField("_requested", flags)!.SetValue(dialer, false);
+            Call("DeleteAccountAsync", other.Id);
+            Check(!dialer.IsRunning && store.Load().Accounts.Count == 0, "Deleting account stops retained live core even after intent was cleared");
         }
         finally
         {

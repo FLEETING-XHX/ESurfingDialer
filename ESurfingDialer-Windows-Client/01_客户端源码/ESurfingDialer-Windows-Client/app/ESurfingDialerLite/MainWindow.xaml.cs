@@ -134,7 +134,7 @@ public partial class MainWindow : Window
     private async void CampusConnectionButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || _accountOperation || _disposed) return;
-        if (_dialer.IsRequested)
+        if (_dialer.IsRequested || _dialer.IsRunning)
         {
             await StopConnectionAsync();
             return;
@@ -328,7 +328,7 @@ public partial class MainWindow : Window
     private void UpdateStatus(string status)
     {
         var presentation = ConnectionPresentation.For(status);
-        CampusConnectionButton.ToolTip = _dialer.IsRequested ? "点击断开校园网" : "点击连接校园网";
+        CampusConnectionButton.ToolTip = _dialer.IsRequested || _dialer.IsRunning ? "点击断开校园网" : "点击连接校园网";
         CampusStatusText.ToolTip = HomeStatusText.ToolTip = presentation.Detail;
         if (_currentStatus == status) return;
         var previous = _currentStatus;

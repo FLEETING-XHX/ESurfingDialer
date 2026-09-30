@@ -69,14 +69,28 @@ internal sealed class PreparedConfigSave(string temporary, Action beforeCommit) 
     {
         if (_committed) throw new InvalidOperationException("配置已提交。");
         beforeCommit();
-        File.Move(temporary, AppPaths.ConfigFile, overwrite: true);
+        RetryFileOperation(() => File.Move(temporary, AppPaths.ConfigFile, overwrite: true));
         _committed = true;
     }
     public void Dispose() { if (!_committed) CleanUp(temporary); }
     internal static void CleanUp(string path)
     {
-        try { File.Delete(path); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        try { RetryFileOperation(() => File.Delete(path)); }
+        catch (IOException) { ClientLog.Write(AppPaths.ClientLogFile, "配置临时文件仍被占用，未能清理；原账户配置未覆盖。"); }
+        catch (UnauthorizedAccessException) { ClientLog.Write(AppPaths.ClientLogFile, "配置临时文件无法删除；原账户配置未覆盖。"); }
+    }
+
+    private static void RetryFileOperation(Action operation)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try { operation(); return; }
+            catch (Exception ex) when (attempt < 3 && (ex is IOException or UnauthorizedAccessException)
+                && (ex.HResult & 0xffff) is 5 or 32 or 33)
+            {
+                // Brief sharing/access races are retried within 90 ms; permanent failure still propagates.
+                Thread.Sleep(15 * (attempt + 1));
+            }
+        }
     }
 }

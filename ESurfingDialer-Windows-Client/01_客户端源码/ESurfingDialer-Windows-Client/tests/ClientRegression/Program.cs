@@ -311,6 +311,9 @@ internal static partial class Program
             AccountFailureChecks(window);
             HarnessChecks(output);
             ProcessBoundaryChecks();
+            LogBoundsChecks(window);
+            ConfigRetryChecks();
+            if (args.Contains("--stress")) ResourceStressChecks(window, output);
             InstanceChecks(output);
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));
@@ -336,7 +339,7 @@ internal static partial class Program
         info.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
         var process = System.Diagnostics.Process.Start(info)!;
-        OwnedWorkers.TryAdd(process.Id, process.StartTime.ToUniversalTime());
+        RegisterWorker(process);
         return process;
     }
 

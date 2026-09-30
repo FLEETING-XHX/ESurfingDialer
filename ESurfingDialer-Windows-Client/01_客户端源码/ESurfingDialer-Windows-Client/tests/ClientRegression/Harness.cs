@@ -28,6 +28,20 @@ internal static partial class Program
             try { CleanOwnedWorkers(); }
             catch (Exception ex) { failure = failure == null ? ex : new AggregateException(failure, ex); }
         }
+        if (!args.Contains("--idle") && !args.Contains("--instance"))
+        {
+            try
+            {
+                var output = Path.GetFullPath(args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? "artifacts/ui");
+                Directory.CreateDirectory(output);
+                File.WriteAllText(Path.Combine(output, "result.json"), System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Passed = failure == null, Checks = _checks, Core = args.Contains("--core"), Stress = args.Contains("--stress"),
+                    CompletedAtUtc = DateTimeOffset.UtcNow, FailureType = failure?.GetType().FullName
+                }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+            }
+            catch (Exception ex) { failure = failure == null ? ex : new AggregateException(failure, ex); }
+        }
         if (failure == null) return 0;
         var text = "客户端回归失败（不会计为通过）：" + Environment.NewLine + ClientLog.Redact(failure.ToString());
         Console.Error.WriteLine(text);
@@ -62,6 +76,27 @@ internal static partial class Program
             finally { OwnedWorkers.TryRemove(worker.Key, out _); }
         }
         if (failures.Count > 0) throw new AggregateException("测试子进程清理失败。", failures);
+    }
+
+    private static void RegisterWorker(Process process)
+    {
+        foreach (var item in OwnedWorkers)
+        {
+            var completed = false;
+            try
+            {
+                using var prior = Process.GetProcessById(item.Key);
+                completed = prior.HasExited || prior.StartTime.ToUniversalTime() != item.Value;
+            }
+            catch (ArgumentException) { completed = true; }
+            if (completed) OwnedWorkers.TryRemove(item);
+        }
+        var id = process.Id;
+        var started = process.StartTime.ToUniversalTime();
+        OwnedWorkers[id] = started;
+        process.Exited += (_, _) => OwnedWorkers.TryRemove(new KeyValuePair<int, DateTime>(id, started));
+        process.EnableRaisingEvents = true;
+        if (process.HasExited) OwnedWorkers.TryRemove(new KeyValuePair<int, DateTime>(id, started));
     }
 
     private static void FailureFixture(string[] args)

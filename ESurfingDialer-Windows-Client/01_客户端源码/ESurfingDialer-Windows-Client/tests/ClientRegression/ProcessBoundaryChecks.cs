@@ -16,7 +16,7 @@ internal static partial class Program
         info.ArgumentList.Add("--idle");
         process.StartInfo = info;
         process.Start();
-        OwnedWorkers.TryAdd(process.Id, process.StartTime.ToUniversalTime());
+        RegisterWorker(process);
     }
 
     private static bool ProcessExists(int pid)

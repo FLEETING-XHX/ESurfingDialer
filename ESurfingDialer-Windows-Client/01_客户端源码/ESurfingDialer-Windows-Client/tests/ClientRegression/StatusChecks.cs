@@ -49,8 +49,14 @@ internal static partial class Program
             SetWindow("_automaticRecoveryExhausted", false);
             SetCore("_recoveryExhausted", true); SetCore("_requested", false);
             Refresh(); Expect("恢复已暂停");
-            dialer.Stop();
-            typeof(MainWindow).GetMethod("UpdateStatus", flags)!.Invoke(window, new object[] { "用户已停止" });
+            Check(((Button)window.FindName("CampusConnectionButton")).ToolTip.ToString()!.Contains("断开"), "Live core without intent still offers stop");
+            typeof(MainWindow).GetMethod("CampusConnectionButton_Click", flags)!.Invoke(window, new object[] { window, new System.Windows.RoutedEventArgs() });
+            AwaitUi(Task.Run(() =>
+            {
+                if (!SpinWait.SpinUntil(() => !dialer.IsRunning, 5000)) throw new TimeoutException("Retained core was not stopped");
+            }));
+            DrainUiQueue();
+            Check(!dialer.IsRunning && !dialer.IsRequested, "Connection button stops retained core instead of starting a duplicate");
             Refresh(); Expect("用户已停止");
             Check(((Button)window.FindName("CampusConnectionButton")).ToolTip.ToString()!.Contains("点击连接"), "Stopped state offers connect instead of disconnect");
             var text = new HealthSnapshot().ToDisplayText();
