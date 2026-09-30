@@ -47,6 +47,8 @@ internal static partial class Program
             var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
             using (var file = File.Create(Path.Combine(output, "status-paused.png"))) encoder.Save(file);
             SetWindow("_automaticRecoveryExhausted", false);
+            SetCore("_recoveryExhausted", true); SetCore("_requested", false);
+            Refresh(); Expect("恢复已暂停");
             dialer.Stop();
             typeof(MainWindow).GetMethod("UpdateStatus", flags)!.Invoke(window, new object[] { "用户已停止" });
             Refresh(); Expect("用户已停止");

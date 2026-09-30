@@ -58,11 +58,7 @@ public partial class MainWindow : Window
         AddSummary("客户端已启动", "点击主页的校园网卡片连接。", "Offline");
         AppendLog("客户端已启动。");
         if (_configStore.LoadError != null) AppendLog("配置读取失败：" + _configStore.LoadError);
-        _dialer.RecoveryMessage += message => Dispatcher.BeginInvoke(() =>
-        {
-            if (_disposed) return;
-            AddSummary("自动恢复", message, "Coral");
-        });
+        _dialer.RecoveryMessage += QueueRecoveryMessage;
         _healthTimer.Tick += async (_, _) => await RefreshHealthSafelyAsync();
         _healthTimer.Start();
         if (!previewMode)
@@ -182,7 +178,7 @@ public partial class MainWindow : Window
 
     private async Task<bool> StopConnectionAsync(bool userInitiated = true)
     {
-        if (_busy) return false;
+        if (_busy || _disposed) return false;
         if (userInitiated) ResetEnhancedRecoveryState();
         _busy = true;
         CampusConnectionButton.IsEnabled = false;
@@ -213,7 +209,7 @@ public partial class MainWindow : Window
             RecordHealthyConnection(now);
             UpdateStatus("已连接");
         }
-        else if (_automaticRecoveryExhausted)
+        else if (_automaticRecoveryExhausted || (_dialer.RecoveryExhausted && _currentStatus != "连接失败"))
             UpdateStatus("恢复已暂停");
         else if (_dialer.IsRecovering)
             UpdateStatus("正在恢复");
@@ -476,6 +472,20 @@ public partial class MainWindow : Window
     private async void SelectAccount_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as Button)?.Tag is string id) await SelectAccountAsync(id);
+    }
+
+    private void QueueRecoveryMessage(string message)
+    {
+        if (_disposed || Dispatcher.HasShutdownStarted) return;
+        try
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_disposed || Dispatcher.HasShutdownStarted) return;
+                AddSummary("自动恢复", message, "Coral");
+            });
+        }
+        catch (InvalidOperationException) { }
     }
 
     private async void DeleteAccount_Click(object sender, RoutedEventArgs e)
