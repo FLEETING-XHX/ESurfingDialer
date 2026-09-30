@@ -5,6 +5,14 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.OkHttpClient
+import org.w3c.dom.Element
+import org.w3c.dom.Node
+import org.xml.sax.InputSource
+import org.xml.sax.SAXParseException
+import org.xml.sax.helpers.DefaultHandler
+import java.io.StringReader
+import javax.xml.XMLConstants
+import javax.xml.parsers.DocumentBuilderFactory
 
 data class AuthenticationEndpoints(val authUrl: String, val ticketUrl: String, val userIp: String,
                                    val acIp: String, val source: String)
@@ -17,7 +25,7 @@ object PortalConfiguration {
 
     fun isIpv4(value: String): Boolean {
         val parts = value.split('.')
-        return parts.size == 4 && parts.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit)
+        return parts.size == 4 && parts.all { it.isNotEmpty() && it.length <= 3 && it.all { c -> c in '0'..'9' }
             && (it.toIntOrNull() ?: -1) in 0..255 }
     }
 
@@ -31,25 +39,108 @@ object PortalConfiguration {
     }
 
     fun parse(body: String): AuthenticationEndpoints? {
-        val start = body.indexOf(START)
-        if (start < 0) return null
-        val end = body.indexOf(END, start + START.length)
-        if (end < 0 || end - start > BODY_LIMIT) throw AuthenticationFailure("PORTAL_CONFIG_TRUNCATED", true)
-        val config = body.substring(start + START.length, end)
-        fun tag(name: String): String {
-            val values = Regex("<$name>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)]]>|([^<]*))\\s*</$name>")
-                .findAll(config).toList()
-            if (values.size != 1) throw AuthenticationFailure("PORTAL_CONFIG_INVALID", true)
-            val match = values.single()
-            return (match.groups[1]?.value ?: match.groups[2]?.value.orEmpty().replace("&amp;", "&")).trim()
+        var diagnostics = PortalDiagnostics(bodyChars = body.length)
+        try {
+            if (body.length > BODY_LIMIT) throw AuthenticationFailure("PORTAL_BODY_TOO_LARGE", true)
+            val blocks = Regex(Regex.escape(START)).findAll(body).count()
+            diagnostics = diagnostics.copy(configBlocks = blocks)
+            if (blocks == 0) return null
+            if (blocks > 1) throw AuthenticationFailure("PORTAL_CONFIG_DUPLICATE", true)
+            val start = body.indexOf(START) + START.length
+            val end = body.indexOf(END, start)
+            if (end < 0) throw AuthenticationFailure("PORTAL_CONFIG_TRUNCATED", true)
+            val root = configXml(body.substring(start, end))
+            val authFields = root.getElementsByTagName("auth-url")
+            val ticketFields = root.getElementsByTagName("ticket-url")
+            diagnostics = diagnostics.copy(authFields = authFields.length, ticketFields = ticketFields.length)
+            fun field(name: String, code: String): Element {
+                val fields = root.getElementsByTagName(name)
+                if (fields.length == 0) throw AuthenticationFailure("${code}_MISSING", true)
+                if (fields.length > 1) throw AuthenticationFailure("${code}_DUPLICATE", true)
+                return fields.item(0) as Element
+            }
+            val authField = field("auth-url", "PORTAL_AUTH_URL")
+            val ticketField = field("ticket-url", "PORTAL_TICKET_URL")
+            val auth = address(fieldText(authField, "PORTAL_AUTH_URL"), "PORTAL_AUTH_URL_INVALID")
+            val ticket = address(fieldText(ticketField, "PORTAL_TICKET_URL"), "PORTAL_TICKET_URL_INVALID")
+            if (!auth.encodedPath.endsWith("/auth.cgi") || !ticket.encodedPath.endsWith("/ticket.cgi"))
+                throw AuthenticationFailure("PORTAL_ENDPOINT_PATH_INVALID", true)
+            fun ip(name: String): String = ticket.queryParameterValues(name).singleOrNull()?.takeIf(::isIpv4)
+                ?: throw AuthenticationFailure("PORTAL_IP_INVALID", true)
+            return AuthenticationEndpoints(auth.toString(), ticket.toString(), ip("wlanuserip"), ip("wlanacip"), "portal")
+        } catch (e: AuthenticationFailure) {
+            throw AuthenticationFailure(e.code, e.deterministic, diagnostics)
         }
-        val auth = address(tag("auth-url"))
-        val ticket = address(tag("ticket-url"))
-        if (!auth.encodedPath.endsWith("/auth.cgi") || !ticket.encodedPath.endsWith("/ticket.cgi"))
-            throw AuthenticationFailure("PORTAL_CONFIG_INVALID", true)
-        fun ip(name: String): String = ticket.queryParameterValues(name).singleOrNull()?.takeIf(::isIpv4)
-            ?: throw AuthenticationFailure("PORTAL_IP_INVALID", true)
-        return AuthenticationEndpoints(auth.toString(), ticket.toString(), ip("wlanuserip"), ip("wlanacip"), "portal")
+    }
+
+    private fun fieldText(element: Element, code: String): String {
+        val value = StringBuilder()
+        for (i in 0 until element.childNodes.length) {
+            val node = element.childNodes.item(i)
+            when (node.nodeType) {
+                Node.TEXT_NODE, Node.CDATA_SECTION_NODE -> value.append(node.nodeValue)
+                Node.COMMENT_NODE -> Unit
+                else -> throw AuthenticationFailure("${code}_STRUCTURE_INVALID", true)
+            }
+        }
+        return value.toString().trim().takeIf { it.isNotEmpty() }
+            ?: throw AuthenticationFailure("${code}_EMPTY", true)
+    }
+
+    private fun configXml(config: String): Element {
+        try {
+            val factory = DocumentBuilderFactory.newInstance().apply {
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+                setFeature("http://xml.org/sax/features/external-general-entities", false)
+                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+                setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+                setAttribute("http://www.oracle.com/xml/jaxp/properties/maxElementDepth", "64")
+                isXIncludeAware = false
+                isExpandEntityReferences = false
+            }
+            val builder = factory.newDocumentBuilder()
+            builder.setErrorHandler(object : DefaultHandler() {
+                override fun error(e: SAXParseException) { throw e }
+                override fun fatalError(e: SAXParseException) { throw e }
+            })
+            // A portal comment can contain an XML fragment or one declared document.
+            val fragment = config.trim().removePrefix("\uFEFF").trimStart()
+                .replaceFirst(Regex("^<\\?xml\\s[^?]*\\?>"), "")
+            val xml = "<portal-config>${escapeQuerySeparators(fragment)}</portal-config>"
+            return builder.parse(InputSource(StringReader(xml))).documentElement
+        } catch (_: Exception) {
+            // XML parser messages can contain URLs or field values; never expose the cause.
+            throw AuthenticationFailure("PORTAL_CONFIG_XML_INVALID", true)
+        }
+    }
+
+    /** Preserve legacy plain URLs with &key=value. CDATA, markup and entities stay untouched. */
+    private fun escapeQuerySeparators(xml: String): String = buildString {
+        var at = 0
+        val separator = Regex("&(?=[A-Za-z_][A-Za-z0-9_.~-]*=)")
+        while (at < xml.length) {
+            val end = when {
+                xml.startsWith("<![CDATA[", at) -> xml.indexOf("]]>", at + 9).let { if (it < 0) xml.length else it + 3 }
+                xml.startsWith("<!--", at) -> xml.indexOf("-->", at + 4).let { if (it < 0) xml.length else it + 3 }
+                xml[at] == '<' -> {
+                    var cursor = at + 1
+                    var quote: Char? = null
+                    while (cursor < xml.length) {
+                        val c = xml[cursor++]
+                        if (quote != null) { if (c == quote) quote = null }
+                        else if (c == '\'' || c == '"') quote = c
+                        else if (c == '>') break
+                    }
+                    cursor
+                }
+                else -> xml.indexOf('<', at).let { if (it < 0) xml.length else it }
+            }
+            val segment = xml.substring(at, end)
+            append(if (xml[at] == '<') segment else separator.replace(segment, "&amp;"))
+            at = end
+        }
     }
 
     fun legacy(userIp: String, acIp: String): AuthenticationEndpoints {
@@ -62,29 +153,51 @@ object PortalConfiguration {
 
     fun discover(portalUrl: String?, portalBody: String?, userIp: String, acIp: String,
                  httpClient: OkHttpClient = client): AuthenticationEndpoints {
-        parse(portalBody.orEmpty())?.let { return it }
+        val cachedFailure = try {
+            parse(portalBody.orEmpty())?.let { return it }
+            null
+        } catch (e: AuthenticationFailure) { e }
         if (!portalUrl.isNullOrBlank()) {
             var url = address(portalUrl)
-            repeat(3) {
+            repeat(3) { hop ->
                 val request = Request.Builder().url(url).header("User-Agent", Constants.USER_AGENT).build()
+                var metadata = PortalDiagnostics(hop = hop + 1)
                 val next = try {
                     httpClient.newCall(request).execute().use { response ->
+                        metadata = metadata.copy(httpStatus = response.code,
+                            mediaType = PortalMediaType.fromHeader(response.header("Content-Type")))
                         if (response.isRedirect) {
                             val location = response.header("Location") ?: throw AuthenticationFailure("PORTAL_REDIRECT_INVALID")
                             address(url.resolve(location)?.toString().orEmpty())
                         } else {
                             if (!response.isSuccessful) throw AuthenticationFailure("PORTAL_HTTP_ERROR")
                             val bytes = response.peekBody(BODY_LIMIT + 1).bytes()
+                            metadata = metadata.copy(bodyBytes = bytes.size)
                             if (bytes.size > BODY_LIMIT) throw AuthenticationFailure("PORTAL_BODY_TOO_LARGE", true)
-                            return parse(bytes.toString(Charsets.UTF_8)) ?: legacy(userIp, acIp)
+                            parse(bytes.toString(Charsets.UTF_8))?.let { return it }
+                            // A bad cached config may recover through a fresh valid config, not a silent fallback.
+                            if (cachedFailure != null) throw AuthenticationFailure(cachedFailure.code,
+                                cachedFailure.deterministic, cachedFailure.portalDiagnostics?.copy(cachedConfig = true))
+                            val userIps = url.queryParameterValues("wlanuserip")
+                            val acIps = url.queryParameterValues("wlanacip")
+                            if (userIps.size > 1 || acIps.size > 1) throw AuthenticationFailure("PORTAL_IP_INVALID", true)
+                            val discoveredUserIp = userIps.singleOrNull()
+                            val discoveredAcIp = acIps.singleOrNull()
+                            return if (discoveredUserIp != null || discoveredAcIp != null)
+                                legacy(discoveredUserIp.orEmpty(), discoveredAcIp.orEmpty())
+                            else legacy(userIp, acIp)
                         }
                     }
-                } catch (e: AuthenticationFailure) { throw e }
-                catch (_: Exception) { throw AuthenticationFailure("PORTAL_TRANSPORT_ERROR") }
+                } catch (e: AuthenticationFailure) {
+                    val details = (e.portalDiagnostics ?: PortalDiagnostics()).copy(bodyBytes = metadata.bodyBytes,
+                        httpStatus = metadata.httpStatus, hop = metadata.hop, mediaType = metadata.mediaType)
+                    throw AuthenticationFailure(e.code, e.deterministic, details)
+                } catch (_: Exception) { throw AuthenticationFailure("PORTAL_TRANSPORT_ERROR", false, metadata) }
                 url = next
             }
             throw AuthenticationFailure("PORTAL_REDIRECT_LIMIT")
         }
+        if (cachedFailure != null) throw cachedFailure
         return legacy(userIp, acIp)
     }
 }

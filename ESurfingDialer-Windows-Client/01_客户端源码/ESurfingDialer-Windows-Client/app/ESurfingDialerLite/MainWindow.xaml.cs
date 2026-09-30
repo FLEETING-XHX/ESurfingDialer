@@ -201,7 +201,7 @@ public partial class MainWindow : Window
         var health = HealthSnapshot.Load();
         var now = DateTimeOffset.UtcNow;
         var usable = _dialer.IsRunning
-            && health?.IsConnectedFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true;
+            && health?.IsConnectedFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true;
         HealthTextBlock.Text = _dialer.IsRunning
             ? health == null ? "核心运行中，等待健康状态。" : "核心状态：" + health.ToDisplayText()
             : "认证核心未运行。";
@@ -212,7 +212,7 @@ public partial class MainWindow : Window
         }
         else if (_dialer.IsRequested)
             UpdateStatus(health?.HasAuthenticationFailureFor(_dialer.StartedAt, now,
-                EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true ? "连接失败" : "连接中");
+                EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true ? "连接失败" : "连接中");
         else if (_currentStatus is "已连接" or "连接中" or "连接失败")
             UpdateStatus("已断开");
 
@@ -220,7 +220,7 @@ public partial class MainWindow : Window
             && now - _dialer.StartedAt >= EnhancedConnectionPolicy.EnhancedStartupGrace
             && !IsResumeRecoveryGraceActive())
         {
-            var reason = EnhancedConnectionPolicy.RecoverableFailureReason(health, _dialer.StartedAt, now);
+            var reason = EnhancedConnectionPolicy.RecoverableFailureReason(health, _dialer.StartedAt, now, _dialer.InstanceId);
             if (reason == null) _consecutiveUnhealthyChecks = 0;
             else
             {
@@ -292,13 +292,14 @@ public partial class MainWindow : Window
         _recoveryStartedAt = now;
         AppendLog($"增强连接开始恢复：检测时间={now:O}，原因={reason}，恢复次数={_automaticRecoveryCount}，下次恢复最早允许时间={_nextRecoveryAllowedAt:O}。");
         AddSummary("增强恢复", "检测到认证异常，正在重新启动认证核心。", "Coral");
-        if (!await StopConnectionAsync(userInitiated: false))
+        try
         {
-            AppendLog("增强连接恢复未能停止旧核心，将在冷却后重试。");
-            return;
+            UpdateStatus("连接中");
+            var password = PasswordProtector.Unprotect(_config.ProtectedPassword);
+            if (!await _dialer.RestartForRecoveryAsync(_config, password, AppendLog) && _dialer.IsRequested)
+                AppendLog("增强连接恢复未完成，请查看恢复状态。");
         }
-        if (!await StartDialerAsync(automaticRecovery: true))
-            AppendLog("增强连接恢复未能启动认证核心，将按退避策略重试。");
+        catch (Exception ex) { AppendLog("增强连接恢复失败：" + ex.Message); }
     }
 
     private void ResetEnhancedRecoveryState()

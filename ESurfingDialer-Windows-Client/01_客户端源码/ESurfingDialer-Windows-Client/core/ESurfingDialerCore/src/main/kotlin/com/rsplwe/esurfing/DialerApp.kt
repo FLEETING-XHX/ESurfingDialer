@@ -64,8 +64,7 @@ object DialerApp {
                     now - HealthStatus.lastPortalReauthAt)) {
                 // Keep the accepted recovery pending even if a later connectivity probe returns SUCCESS.
                 HealthStatus.lastPortalReauthAt = now
-                States.requestAuthorization()
-                States.updateNetworkStatus(result.status)
+                States.requestAuthorization(result)
                 logger.warn("PORTAL_REAUTH_REQUESTED")
                 repeatedLogLimiter.reset("portal-debounced")
             } else if (repeatedLogLimiter.shouldLog("portal-debounced")) {
@@ -93,7 +92,7 @@ object DialerApp {
 
                             ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP -> {
                                 // The first redirect need not contain IPs; retain it for bounded portal discovery.
-                                States.portal = networkStatus
+                                States.observePortal(networkStatus)
                                 HealthStatus.markError(networkStatus.message.takeUnless { it == "ok" } ?: "Portal requires configuration discovery")
                                 if (repeatedLogLimiter.shouldLog("portal-missing-parameters"))
                                     logger.error("No parameter detected in url.")
@@ -104,11 +103,7 @@ object DialerApp {
                             }
 
                             ConnectivityStatus.IS_REDIRECTS_FOUND_IP -> {
-                                States.portal = networkStatus
-                                if (!HealthStatus.authenticated) {
-                                    States.userIp = networkStatus.userIp!!
-                                    States.acIp = networkStatus.acIp!!
-                                }
+                                States.observePortal(networkStatus)
                                 val now = System.currentTimeMillis() / 1000
                                 HealthStatus.lastNetworkCheckAt = now
                                 if (!HealthStatus.authenticated) {
@@ -169,6 +164,8 @@ object DialerApp {
                     if (isRunning) {
                         isRunning = false
                     }
+                    States.cancelAuthorization()
+                    CoreSignals.wakeNetworkMonitor()
                     if (client.session != null) {
                         client.term()
                     }

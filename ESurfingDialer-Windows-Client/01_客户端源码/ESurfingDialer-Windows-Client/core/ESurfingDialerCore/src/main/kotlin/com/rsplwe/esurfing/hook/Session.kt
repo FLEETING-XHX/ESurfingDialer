@@ -7,9 +7,10 @@ import com.rsplwe.esurfing.States
 import com.rsplwe.esurfing.NativeSessionLoader
 import com.rsplwe.esurfing.NativeSessionHandle
 import com.rsplwe.esurfing.AuthenticationFailure
+import com.rsplwe.esurfing.AuthenticationSession
 import org.apache.log4j.Logger
 
-class Session(zsm: ByteArray) {
+class Session(zsm: ByteArray) : AuthenticationSession {
 
     private val logger: Logger = Logger.getLogger(Session::class.java)
     private val emulator: AndroidEmulator = AndroidMock.getInstance().getEmulator()
@@ -27,9 +28,9 @@ class Session(zsm: ByteArray) {
         return method.callStaticJniMethodLong(emulator, "load([B)J", zsm)
     }
 
-    fun decrypt(hex: String): String = nativeHandle.use { handle ->
+    override fun decrypt(value: String): String = nativeHandle.use { handle ->
         try {
-            val r: DvmObject<*> = method.callStaticJniMethodObject(emulator, "dec(J[B)[B", handle, hex.toByteArray(Charsets.UTF_8))
+            val r: DvmObject<*> = method.callStaticJniMethodObject(emulator, "dec(J[B)[B", handle, value.toByteArray(Charsets.UTF_8))
             String(r.value as ByteArray, Charsets.UTF_8)
         } catch (_: Exception) { throw AuthenticationFailure("NATIVE_DECRYPT_FAILED", true) }
     }
@@ -46,14 +47,14 @@ class Session(zsm: ByteArray) {
         r.value as String
     }
 
-    fun encrypt(hex: String): String = nativeHandle.use { handle ->
+    override fun encrypt(value: String): String = nativeHandle.use { handle ->
         try {
-            val r: DvmObject<*> = method.callStaticJniMethodObject(emulator, "enc(J[B)[B", handle, hex.toByteArray(Charsets.UTF_8))
+            val r: DvmObject<*> = method.callStaticJniMethodObject(emulator, "enc(J[B)[B", handle, value.toByteArray(Charsets.UTF_8))
             String(r.value as ByteArray, Charsets.UTF_8)
         } catch (_: Exception) { throw AuthenticationFailure("NATIVE_ENCRYPT_FAILED", true) }
     }
 
-    fun free() = nativeHandle.free()
+    override fun free() = nativeHandle.free()
 
     private fun freeHandle(handle: Long) {
         method.callStaticJniMethod(emulator, "free(J)V", handle)

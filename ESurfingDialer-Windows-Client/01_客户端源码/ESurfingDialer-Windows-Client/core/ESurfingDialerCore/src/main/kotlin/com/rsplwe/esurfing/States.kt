@@ -3,7 +3,15 @@ package com.rsplwe.esurfing
 import com.rsplwe.esurfing.utils.ConnectivityStatus
 import com.rsplwe.esurfing.utils.NetworkConnectivityResult
 import java.io.File
-import java.util.concurrent.atomic.AtomicLong
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+
+data class AuthorizationRequest(val version: Long, val portal: NetworkConnectivityResult)
+
+/** Ignore page nonces, but keep endpoint and address changes distinct. Never log this key. */
+internal fun portalIdentity(portal: NetworkConnectivityResult?): String {
+    val url = portal?.portalUrl?.toHttpUrlOrNull()
+    return "${portal?.userIp}|${portal?.acIp}|${url?.scheme}|${url?.host}|${url?.port}|${url?.encodedPath}"
+}
 
 
 object States {
@@ -30,20 +38,53 @@ object States {
     @Volatile
     var isRunning = true
 
-    private val requestedAuthorization = AtomicLong(0)
-    private val completedAuthorization = AtomicLong(0)
-    val authorizationRequestVersion: Long get() = requestedAuthorization.get()
-    val forceAuthorization: Boolean get() = requestedAuthorization.get() != completedAuthorization.get()
+    private var requestedAuthorization = 0L
+    private var pendingAuthorization: AuthorizationRequest? = null
+    val authorizationRequestVersion: Long @Synchronized get() = requestedAuthorization
+    val forceAuthorization: Boolean @Synchronized get() = isRunning && pendingAuthorization != null
 
-    fun requestAuthorization() {
-        requestedAuthorization.incrementAndGet()
+    @Synchronized fun requestAuthorization(candidate: NetworkConnectivityResult): Boolean {
+        if (!isRunning) return false
+        if (candidate.portalUrl == null && candidate.portalBody == null
+            && !(PortalConfiguration.isIpv4(candidate.userIp.orEmpty()) && PortalConfiguration.isIpv4(candidate.acIp.orEmpty()))) return false
+        val pending = pendingAuthorization
+        if (pending != null && portalIdentity(pending.portal) == portalIdentity(candidate)) {
+            pendingAuthorization = pending.copy(portal = candidate)
+            return false
+        }
+        pendingAuthorization = AuthorizationRequest(++requestedAuthorization, candidate)
         CoreSignals.wakeClient()
+        return true
     }
 
-    fun acknowledgeAuthorization(version: Long) {
-        completedAuthorization.updateAndGet { maxOf(it, version) }
+    @Synchronized fun observePortal(candidate: NetworkConnectivityResult) {
+        portal = candidate
+        val pending = pendingAuthorization
+        if (pending != null && portalIdentity(pending.portal) == portalIdentity(candidate))
+            pendingAuthorization = pending.copy(portal = candidate)
+        // Completion uses the same lock: an in-flight older login cannot erase a newly observed portal.
+        if (!HealthStatus.authenticated) requestAuthorization(candidate)
+    }
+
+    @Synchronized fun requestSessionRecovery(candidate: NetworkConnectivityResult) {
+        if (pendingAuthorization == null) requestAuthorization(candidate)
+    }
+
+    @Synchronized fun authorizationRequest(): AuthorizationRequest? = if (isRunning) pendingAuthorization else null
+
+    @Synchronized fun acknowledgeAuthorization(version: Long) {
+        if (pendingAuthorization?.version == version) pendingAuthorization = null
         if (forceAuthorization) CoreSignals.wakeClient()
     }
+
+    @Synchronized fun completeAuthorization(version: Long, heartbeatSeconds: Long): Boolean {
+        if (!isRunning) return false
+        HealthStatus.markLoginSuccess(heartbeatSeconds)
+        acknowledgeAuthorization(version)
+        return true
+    }
+
+    @Synchronized fun cancelAuthorization() { pendingAuthorization = null; CoreSignals.wakeClient() }
 
     var useDynarmic = false
 

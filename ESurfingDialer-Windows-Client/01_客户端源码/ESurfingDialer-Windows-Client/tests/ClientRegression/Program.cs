@@ -14,6 +14,14 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--idle")) { Console.ReadLine(); return; }
+        if (args.Length == 2 && args[0] == "--instance")
+        {
+            using var instance = new SingleInstanceCoordinator(args[1], () => { });
+            Console.WriteLine(instance.IsOwner ? "owner" : "secondary");
+            if (instance.IsOwner) Console.ReadLine();
+            return;
+        }
         var output = Path.GetFullPath(args.FirstOrDefault() ?? "artifacts/ui");
         Directory.CreateDirectory(output);
         Environment.SetEnvironmentVariable("ESURFING_CLIENT_HOME", Path.Combine(output, "test-data"));
@@ -59,12 +67,22 @@ internal static class Program
         var healthySnapshot = new HealthSnapshot
         {
             ProcessAlive = true, ClientThreadAlive = true, NetworkCheckThreadAlive = true, Authenticated = true,
-            LastUpdatedAt = now.ToUnixTimeSeconds(), LastHeartbeatSuccessAt = now.ToUnixTimeSeconds()
+            LastUpdatedAt = now.ToUnixTimeSeconds(), LastHeartbeatSuccessAt = now.ToUnixTimeSeconds(),
+            AuthenticationStage = "heartbeat-wait", ClientProgressAgeMillis = 0, ClientProgressTimeoutMillis = 330_000
         };
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null, "Healthy core does not trigger enhanced recovery");
-        healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-11).ToUnixTimeSeconds();
-        Check(healthySnapshot.IsConnectedFor(now.AddMinutes(-1), now, EnhancedConnectionPolicy.EnhancedHealthSnapshotMaxAge), "Authenticated current health stays connected when heartbeat timestamp is stale");
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null, "Authenticated core remains connected when heartbeat timestamp is stale");
+        healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-4).ToUnixTimeSeconds();
+        healthySnapshot.ClientProgressAgeMillis = 240_000;
+        Check(healthySnapshot.IsConnectedFor(now.AddMinutes(-5), now), "Negotiated long heartbeat interval remains connected within its monotonic deadline");
+        healthySnapshot.ClientProgressAgeMillis = 330_000;
+        Check(!healthySnapshot.IsConnectedFor(now.AddMinutes(-5), now) &&
+            EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-5), now) != null,
+            "Expired heartbeat progress is neither connected nor ignored by recovery");
+        healthySnapshot.ClientProgressAgeMillis = -1;
+        Check(!healthySnapshot.IsConnectedFor(now.AddMinutes(-5), now), "Missing progress cannot certify an authenticated session");
+        healthySnapshot.ClientProgressAgeMillis = 0;
+        healthySnapshot.ClientProgressTimeoutMillis = 90_000;
+        healthySnapshot.AuthenticationStage = null;
         healthySnapshot.LastHeartbeatSuccessAt = now.ToUnixTimeSeconds();
         healthySnapshot.Authenticated = false;
         healthySnapshot.LastHeartbeatSuccessAt = now.AddSeconds(-46).ToUnixTimeSeconds();
@@ -73,17 +91,20 @@ internal static class Program
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证心跳长时间未确认", "Unauthenticated core with stale heartbeat triggers enhanced recovery");
         healthySnapshot.AuthenticationStage = "session";
         healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(-50).ToUnixTimeSeconds();
+        healthySnapshot.ClientProgressAgeMillis = 50_000;
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) == null,
             "In-flight authentication is not restarted before bounded stage grace");
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddSeconds(-40), now) != null,
-            "Previous process stage cannot suppress recovery");
-        healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(1).ToUnixTimeSeconds();
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
-            "Future stage timestamp cannot suppress recovery");
-        healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(-90).ToUnixTimeSeconds();
+        healthySnapshot.ProcessInstanceId = "current-run";
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now, "other-run") != null,
+            "Another process instance cannot suppress recovery");
+        healthySnapshot.AuthenticationStageStartedAt = now.AddHours(1).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now, "current-run") == null,
+            "Wall-clock changes do not invalidate live monotonic operation progress");
+        healthySnapshot.ClientProgressAgeMillis = 90_000;
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
             "Hung authentication stage expires at ninety seconds");
         healthySnapshot.AuthenticationStageStartedAt = now.ToUnixTimeSeconds();
+        healthySnapshot.ClientProgressAgeMillis = 0;
         healthySnapshot.AuthenticationStage = "unknown";
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
             "Unknown stage cannot grant authentication grace");
@@ -275,6 +296,8 @@ internal static class Program
             var notice = Node<Border>("Notice");
             Check(notice.HorizontalAlignment == HorizontalAlignment.Right && notice.ActualWidth < 300 && Node<TextBlock>("NoticeText").TextAlignment == TextAlignment.Right, "Notice fits content and aligns right");
             Call("OpenLogsButton_Click", window, new RoutedEventArgs()); Render("detailed-logs");
+            WindowHealthChecks(window);
+            InstanceChecks(output);
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));
             using var archive = ZipFile.OpenRead(zip);
@@ -291,6 +314,82 @@ internal static class Program
         if (args.Contains("--core")) SupervisorChecks(store.Load());
         Console.WriteLine($"PASS: {_checks} checks; WPF renders: {output}");
     }
+    private static System.Diagnostics.Process Worker(params string[] arguments)
+    {
+        var info = new System.Diagnostics.ProcessStartInfo("dotnet") {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true
+        };
+        info.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+        return System.Diagnostics.Process.Start(info)!;
+    }
+
+    private static void InstanceChecks(string output)
+    {
+        using var activated = new ManualResetEventSlim();
+        var directory = Path.Combine(output, "instance-fixture");
+        using (var owner = new SingleInstanceCoordinator(directory, () => activated.Set()))
+        {
+            Check(owner.IsOwner, "First instance owns its configuration directory");
+            using var second = Worker("--instance", directory);
+            try {
+                Check(second.WaitForExit(5000) && second.StandardOutput.ReadToEnd().Trim() == "secondary",
+                    "Second process cannot own the same configuration");
+            } finally { if (!second.HasExited) { second.Kill(entireProcessTree: true); second.WaitForExit(); } }
+            Check(activated.Wait(3000), "Second launch signals existing instance activation");
+            using var other = new SingleInstanceCoordinator(Path.Combine(output, "other-instance-fixture"), () => { });
+            Check(other.IsOwner, "Independent configuration directories may run concurrently");
+        }
+        using var reopened = new SingleInstanceCoordinator(directory, () => { });
+        Check(reopened.IsOwner, "Normal shutdown releases the instance lock");
+    }
+
+    private static void WindowHealthChecks(MainWindow window)
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        var dialer = (DialerCoreProcess)typeof(MainWindow).GetField("_dialer", flags)!.GetValue(window)!;
+        var worker = Worker("--idle");
+        var now = DateTimeOffset.UtcNow;
+        typeof(DialerCoreProcess).GetField("_process", flags)!.SetValue(dialer, worker);
+        typeof(DialerCoreProcess).GetField("_requested", flags)!.SetValue(dialer, true);
+        typeof(DialerCoreProcess).GetField("_startedAt", flags)!.SetValue(dialer, now.AddMinutes(-2));
+        typeof(DialerCoreProcess).GetField("_instanceId", flags)!.SetValue(dialer, "ui-fixture");
+        var health = new HealthSnapshot { ProcessAlive = true, ProcessInstanceId = "ui-fixture", Authenticated = true,
+            ClientThreadAlive = false, NetworkCheckThreadAlive = true, LastUpdatedAt = now.ToUnixTimeSeconds(),
+            LastHeartbeatSuccessAt = now.ToUnixTimeSeconds(), AuthenticationStage = "heartbeat-wait",
+            ClientProgressAgeMillis = 0, ClientProgressTimeoutMillis = 330_000 };
+        Directory.CreateDirectory(AppPaths.DataDirectory);
+        void Refresh() {
+            File.WriteAllText(AppPaths.HealthFile, JsonSerializer.Serialize(health));
+            ((Task)typeof(MainWindow).GetMethod("RefreshHealthAsync", flags)!.Invoke(window, null)!).GetAwaiter().GetResult();
+        }
+        int Count(string name) => (int)typeof(MainWindow).GetField(name, flags)!.GetValue(window)!;
+        try
+        {
+            typeof(MainWindow).GetField("_nextRecoveryAllowedAt", flags)!.SetValue(window, now.AddHours(1));
+            Refresh(); Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") == 2 &&
+                (string)typeof(MainWindow).GetField("_currentStatus", flags)!.GetValue(window)! != "已连接",
+                "Dead authenticated thread accumulates consecutive faults without reporting connected");
+            typeof(MainWindow).GetField("_automaticRecoveryAttempts", flags)!.SetValue(window, EnhancedConnectionPolicy.MaximumAutomaticRecoveries);
+            typeof(MainWindow).GetField("_nextRecoveryAllowedAt", flags)!.SetValue(window, DateTimeOffset.MinValue);
+            Refresh();
+            Check((bool)typeof(MainWindow).GetField("_automaticRecoveryExhausted", flags)!.GetValue(window)!,
+                "Invalid authenticated snapshot does not clear recovery limit");
+            health.ClientThreadAlive = true; health.NetworkCheckThreadAlive = false;
+            Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") >= 4, "Dead network thread also preserves fault history");
+            health.NetworkCheckThreadAlive = true; health.ProcessInstanceId = "another-process";
+            Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") >= 5, "Other process health cannot reset recovery budget");
+            health.ProcessInstanceId = "ui-fixture";
+            Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") == 0 && Count("_automaticRecoveryAttempts") == 0,
+                "Genuine healthy confirmation resets anomaly and recovery budgets");
+        }
+        finally { dialer.Stop(); }
+    }
+
     private static void Check(bool condition, string name)
     {
         if (!condition) throw new Exception("FAIL: " + name);
@@ -378,6 +477,7 @@ internal static class Program
             Wait(() => HealthSnapshot.Load()?.IsCurrentFor(core.StartedAt, DateTimeOffset.UtcNow) == true, "Fresh health after manual restart");
             core.Stop();
             Check(!core.IsRunning && !core.IsRequested, "Clean stop releases the core process");
+            RecoveryStartFailureChecks(config);
         }
         finally
         {
@@ -385,5 +485,60 @@ internal static class Program
             Environment.SetEnvironmentVariable("NETWORK_CHECK_URLS", oldUrl);
             server.GetAwaiter().GetResult();
         }
+    }
+
+    private static void RecoveryStartFailureChecks(ClientConfig config)
+    {
+        var starts = 0;
+        var failures = 0;
+        using var failed = new ManualResetEventSlim();
+        var holdRetry = false;
+        var core = new DialerCoreProcess(process => {
+            Interlocked.Increment(ref starts);
+            if (Volatile.Read(ref failures) > 0) {
+                Interlocked.Decrement(ref failures); failed.Set();
+                throw new IOException("synthetic start failure");
+            }
+            process.Start();
+        }, attempt => attempt == 1 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(holdRetry ? 2000 : 100));
+        var password = PasswordProtector.Unprotect(config.ProtectedPassword);
+        try
+        {
+            core.StartAsync(config, password, _ => { }).GetAwaiter().GetResult();
+            var originalId = core.InstanceId;
+            failures = 1;
+            Check(core.RestartForRecoveryAsync(config, password, _ => { }).GetAwaiter().GetResult()
+                && starts == 3 && core.IsRequested && core.IsRunning && core.InstanceId != originalId,
+                "Health restart retains intent and retries one failed start successfully with a new instance id");
+
+            failures = 10; failed.Reset(); holdRetry = true;
+            var cancelled = core.RestartForRecoveryAsync(config, password, _ => { });
+            Check(failed.Wait(5000), "Recovery reaches failed-start backoff before manual stop");
+            core.Stop();
+            var beforeStop = starts;
+            Check(!cancelled.GetAwaiter().GetResult() && !core.IsRequested && !core.IsRunning && starts == beforeStop,
+                "Manual stop cancels failed-start retry without resurrecting the account");
+
+            failures = 0;
+            var switched = new ClientConfig { UserName = "switched-fixture" };
+            core.StartAsync(switched, "switched-fixture-password", _ => { }).GetAwaiter().GetResult();
+            var switchedId = core.InstanceId;
+            Check(core.IsRequested && core.IsRunning && switchedId != originalId, "Manual account switch owns a fresh process after cancellation");
+            failures = 10; failed.Reset();
+            var disabled = core.RestartForRecoveryAsync(switched, "switched-fixture-password", _ => { });
+            Check(failed.Wait(5000), "Recovery reaches failed-start backoff before disabling enhancement");
+            core.EnhancedConnection = false;
+            Check(!disabled.GetAwaiter().GetResult() && !core.IsRequested && !core.IsRunning,
+                "Disabling enhancement cancels failed-start recovery immediately");
+
+            core.EnhancedConnection = true; failures = 0; holdRetry = false;
+            core.StartAsync(config, password, _ => { }).GetAwaiter().GetResult();
+            var beforeLimit = starts;
+            failures = 10;
+            Check(!core.RestartForRecoveryAsync(config, password, _ => { }).GetAwaiter().GetResult()
+                && starts - beforeLimit == EnhancedConnectionPolicy.MaximumAutomaticRecoveries
+                && !core.IsRequested && !core.IsRunning, "Repeated startup failure exhausts bounded recovery and clears intent");
+        }
+        finally { core.Stop(); }
     }
 }

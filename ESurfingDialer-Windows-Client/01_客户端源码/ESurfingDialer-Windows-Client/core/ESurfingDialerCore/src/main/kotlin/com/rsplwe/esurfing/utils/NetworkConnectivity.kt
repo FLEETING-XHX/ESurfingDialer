@@ -2,11 +2,13 @@ package com.rsplwe.esurfing.utils
 
 import cn.yescallop.fluenturi.Uri
 import com.rsplwe.esurfing.Constants
-import com.rsplwe.esurfing.HealthStatus
+import com.rsplwe.esurfing.AuthenticationFailure
 import com.rsplwe.esurfing.RuntimeConfig
 import com.rsplwe.esurfing.PortalConfiguration
 import com.rsplwe.esurfing.network.createProbeHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
@@ -30,8 +32,7 @@ data class NetworkConnectivityResult(
 
 private val probeClient = createProbeHttpClient(RuntimeConfig.networkProbeTimeoutSeconds)
 
-fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls): NetworkConnectivityResult {
-    val client = probeClient
+fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls, client: OkHttpClient = probeClient): NetworkConnectivityResult {
     val errors = mutableListOf<String>()
     val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(RuntimeConfig.networkProbeBudgetSeconds)
 
@@ -41,22 +42,24 @@ fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls): Netw
             errors += "network probe budget exhausted"
             break
         }
-        val request = Request.Builder()
-            .removeHeader("User-Agent")
-            .addHeader("User-Agent", Constants.USER_AGENT)
-            .addHeader("Accept", Constants.REQUEST_ACCEPT)
-            .url(url)
-            .build()
-
         try {
+            val request = Request.Builder()
+                .removeHeader("User-Agent")
+                .addHeader("User-Agent", Constants.USER_AGENT)
+                .addHeader("Accept", Constants.REQUEST_ACCEPT)
+                .url(url)
+                .build()
+
             val call = client.newCall(request)
             call.timeout().timeout(
                 minOf(remainingMillis, TimeUnit.SECONDS.toMillis(RuntimeConfig.networkProbeTimeoutSeconds)),
                 TimeUnit.MILLISECONDS,
             )
             val (responseCode, location, body) = call.execute().use { response ->
-                Triple(response.code, response.headers["Location"],
-                    if (response.code == 200) response.peekBody(RuntimeConfig.networkProbeBodyLimitBytes).string() else "")
+                val bytes = if (response.code == 200 || response.code == 204)
+                    response.peekBody(RuntimeConfig.networkProbeBodyLimitBytes + 1).bytes() else byteArrayOf()
+                if (bytes.size > RuntimeConfig.networkProbeBodyLimitBytes) throw AuthenticationFailure("PROBE_BODY_TOO_LARGE")
+                Triple(response.code, response.headers["Location"], bytes.toString(Charsets.UTF_8))
             }
 
             when (responseCode) {
@@ -65,16 +68,17 @@ fun checkConnectivity(urls: List<String> = RuntimeConfig.networkCheckUrls): Netw
                 }
 
                 200, 204 -> {
-                    val portalResult = parsePortalBody(body)
+                    val portalResult = parsePortalBody(body, request.url.toString())
                     if (portalResult != null) return portalResult
-                    HealthStatus.markNetworkCheckSuccess()
-                    return NetworkConnectivityResult(status = ConnectivityStatus.SUCCESS)
+                    if (isExpectedProbeResponse(request.url, responseCode, body))
+                        return NetworkConnectivityResult(status = ConnectivityStatus.SUCCESS)
+                    errors += "PROBE_UNEXPECTED_RESPONSE_$responseCode"
                 }
 
-                else -> errors += "$url returned HTTP $responseCode"
+                else -> errors += "PROBE_HTTP_$responseCode"
             }
         } catch (e: Exception) {
-            errors += "$url: ${e.localizedMessage ?: e::class.java.simpleName}"
+            errors += if (e is AuthenticationFailure) e.code else "PROBE_TRANSPORT_ERROR"
         }
     }
     return NetworkConnectivityResult(
@@ -102,15 +106,20 @@ private fun parseRedirect(location: String?): NetworkConnectivityResult {
     }
 }
 
-private fun parsePortalBody(body: String): NetworkConnectivityResult? {
+internal fun isExpectedProbeResponse(url: HttpUrl, code: Int, body: String): Boolean =
+    if (url.host == "www.msftconnecttest.com" && url.encodedPath == "/connecttest.txt")
+        code == 200 && body == "Microsoft Connect Test"
+    else code == 204 && body.isEmpty()
+
+private fun parsePortalBody(body: String, sourceUrl: String): NetworkConnectivityResult? {
     if (body.isBlank()) return null
     try {
         PortalConfiguration.parse(body)?.let {
-            return NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_FOUND_IP, it.userIp, it.acIp, portalBody = body)
+            return NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_FOUND_IP, it.userIp, it.acIp, portalUrl = sourceUrl, portalBody = body)
         }
     } catch (_: Exception) {
         return NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP,
-            message = "PORTAL_CONFIG_INVALID", portalBody = body)
+            message = "PORTAL_CONFIG_INVALID", portalUrl = sourceUrl, portalBody = body)
     }
     val lower = body.lowercase()
     if (!lower.contains("wlanuserip") && !lower.contains("userip") && !lower.contains("wlanacip")) return null
@@ -122,12 +131,13 @@ private fun parsePortalBody(body: String): NetworkConnectivityResult? {
     val decodedUserIp = userIp?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }.orEmpty()
     val decodedAcIp = acIp?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }.orEmpty()
     return if (!PortalConfiguration.isIpv4(decodedUserIp) || !PortalConfiguration.isIpv4(decodedAcIp)) {
-        NetworkConnectivityResult(status = ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, portalBody = body)
+        NetworkConnectivityResult(status = ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP, portalUrl = sourceUrl, portalBody = body)
     } else {
         NetworkConnectivityResult(
             status = ConnectivityStatus.IS_REDIRECTS_FOUND_IP,
             userIp = decodedUserIp,
             acIp = decodedAcIp,
+            portalUrl = sourceUrl,
             portalBody = body,
         )
     }
