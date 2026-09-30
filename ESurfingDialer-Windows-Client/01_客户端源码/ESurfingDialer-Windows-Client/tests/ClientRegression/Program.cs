@@ -8,7 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ESurfingDialerLite;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _checks;
     [STAThread]
@@ -297,6 +297,7 @@ internal static class Program
             Check(notice.HorizontalAlignment == HorizontalAlignment.Right && notice.ActualWidth < 300 && Node<TextBlock>("NoticeText").TextAlignment == TextAlignment.Right, "Notice fits content and aligns right");
             Call("OpenLogsButton_Click", window, new RoutedEventArgs()); Render("detailed-logs");
             WindowHealthChecks(window);
+            PasswordChecks(window);
             InstanceChecks(output);
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));

@@ -159,9 +159,11 @@ public partial class MainWindow : Window
         CampusConnectionButton.IsEnabled = false;
         try
         {
-            var password = PasswordProtector.Unprotect(_config.ProtectedPassword);
-            if (string.IsNullOrWhiteSpace(_config.UserName) || string.IsNullOrEmpty(password))
-                throw new InvalidOperationException("请添加账户并填写正确的账号和密码。");
+            var decrypted = PasswordProtector.Decrypt(_config.ProtectedPassword);
+            if (string.IsNullOrWhiteSpace(_config.UserName))
+                throw new InvalidOperationException("请添加账户并填写校园网账号。");
+            if (!decrypted.Success) throw new InvalidOperationException(decrypted.ErrorMessage);
+            var password = decrypted.Password;
             UpdateStatus("连接中");
             AppendLog("准备启动认证核心。");
             await _dialer.StartAsync(_config, password, AppendLog);
@@ -295,7 +297,9 @@ public partial class MainWindow : Window
         try
         {
             UpdateStatus("连接中");
-            var password = PasswordProtector.Unprotect(_config.ProtectedPassword);
+            var decrypted = PasswordProtector.Decrypt(_config.ProtectedPassword);
+            if (!decrypted.Success) throw new InvalidOperationException(decrypted.ErrorMessage);
+            var password = decrypted.Password;
             if (!await _dialer.RestartForRecoveryAsync(_config, password, AppendLog) && _dialer.IsRequested)
                 AppendLog("增强连接恢复未完成，请查看恢复状态。");
         }
@@ -446,8 +450,9 @@ public partial class MainWindow : Window
         SheetTitle.Text = account == null ? "添加账户" : "编辑账户";
         AccountNameTextBox.Text = account?.Name ?? "";
         UserTextBox.Text = account?.UserName ?? "";
-        PasswordBox.Password = account == null ? "" : PasswordProtector.Unprotect(account.ProtectedPassword);
-        AccountErrorText.Text = "";
+        var decrypted = PasswordProtector.Decrypt(account?.ProtectedPassword);
+        PasswordBox.Password = decrypted.Password;
+        AccountErrorText.Text = account != null && !decrypted.Success ? decrypted.ErrorMessage : "";
         AccountListScroll.Visibility = AccountActions.Visibility = Visibility.Collapsed;
         AccountEditor.Visibility = CancelAccountEditButton.Visibility = Visibility.Visible;
         UserTextBox.Focus();
