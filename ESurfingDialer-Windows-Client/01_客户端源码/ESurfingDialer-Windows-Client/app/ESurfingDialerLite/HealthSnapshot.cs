@@ -122,6 +122,7 @@ public sealed class HealthSnapshot
         var updatedAge = LastUpdatedAt > 0 ? now - LastUpdatedAt : -1;
         var heartbeatAge = LastHeartbeatSuccessAt > 0 ? now - LastHeartbeatSuccessAt : -1;
         var error = string.IsNullOrWhiteSpace(LastError) ? "无" : LastError;
-        return $"认证={Authenticated}, 客户端线程={ClientThreadAlive}, 网络线程={NetworkCheckThreadAlive}, 状态更新={updatedAge}s前, 心跳={heartbeatAge}s前, 心跳失败={ConsecutiveHeartbeatFailures}, 错误={error}, 认证重试={(AuthenticationBlocked ? "已暂停，请断开后重新连接" : "运行中")}";
+        static string Age(long seconds) => seconds < 0 ? "暂无有效记录" : $"{seconds} 秒前";
+        return $"认证={(Authenticated ? "已确认" : "未确认")}, 客户端线程={(ClientThreadAlive ? "运行中" : "未运行")}, 网络线程={(NetworkCheckThreadAlive ? "运行中" : "未运行")}, 状态更新={Age(updatedAge)}, 心跳={Age(heartbeatAge)}, 心跳失败={ConsecutiveHeartbeatFailures}, 错误={error}, 认证重试={(AuthenticationBlocked ? "已暂停，请断开后重新连接" : "运行中")}";
     }
 }

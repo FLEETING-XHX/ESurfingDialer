@@ -189,7 +189,7 @@ public partial class MainWindow : Window
         try
         {
             await Task.Run(_dialer.Stop);
-            UpdateStatus("已断开");
+            UpdateStatus(userInitiated ? "用户已停止" : "正在恢复");
             AppendLog(userInitiated ? "用户停止认证核心。" : "增强连接正在重启认证核心。");
             return true;
         }
@@ -212,10 +212,18 @@ public partial class MainWindow : Window
             RecordHealthyConnection(now);
             UpdateStatus("已连接");
         }
+        else if (_automaticRecoveryExhausted)
+            UpdateStatus("恢复已暂停");
+        else if (_dialer.IsRecovering)
+            UpdateStatus("正在恢复");
         else if (_dialer.IsRequested)
-            UpdateStatus(health?.HasAuthenticationFailureFor(_dialer.StartedAt, now,
-                EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true ? "连接失败" : "连接中");
-        else if (_currentStatus is "已连接" or "连接中" or "连接失败")
+        {
+            var failed = health?.HasAuthenticationFailureFor(_dialer.StartedAt, now,
+                EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true;
+            UpdateStatus(failed ? health!.AuthenticationBlocked ? "认证已暂停" : "连接失败"
+                : _recoveryStartedAt != null ? "正在恢复" : "连接中");
+        }
+        else if (_currentStatus is "已连接" or "连接中" or "正在恢复" or "认证已暂停")
             UpdateStatus("已断开");
 
         if (_config.EnhancedConnection && _dialer.IsRequested && _dialer.IsRunning
@@ -282,6 +290,7 @@ public partial class MainWindow : Window
         if (_automaticRecoveryAttempts >= EnhancedConnectionPolicy.MaximumAutomaticRecoveries)
         {
             _automaticRecoveryExhausted = true;
+            UpdateStatus("恢复已暂停");
             AppendLog($"增强连接已暂停自动恢复：连续恢复已达上限 {EnhancedConnectionPolicy.MaximumAutomaticRecoveries} 次，最后原因={reason}。");
             AddSummary("自动恢复已暂停", "请查看详细日志后手动连接。", "Coral");
             return;
@@ -296,7 +305,7 @@ public partial class MainWindow : Window
         AddSummary("增强恢复", "检测到认证异常，正在重新启动认证核心。", "Coral");
         try
         {
-            UpdateStatus("连接中");
+            UpdateStatus("正在恢复");
             var decrypted = PasswordProtector.Decrypt(_config.ProtectedPassword);
             if (!decrypted.Success) throw new InvalidOperationException(decrypted.ErrorMessage);
             var password = decrypted.Password;
@@ -321,22 +330,24 @@ public partial class MainWindow : Window
 
     private void UpdateStatus(string status)
     {
+        var presentation = ConnectionPresentation.For(status);
+        CampusConnectionButton.ToolTip = _dialer.IsRequested ? "点击断开校园网" : "点击连接校园网";
+        CampusStatusText.ToolTip = HomeStatusText.ToolTip = presentation.Detail;
         if (_currentStatus == status) return;
         var previous = _currentStatus;
         _currentStatus = status;
         CampusStatusText.Text = HomeStatusText.Text = status;
-        SpeedStatusText.Text = status == "已连接" ? "已连接" : status == "连接中" ? "正在连接" : "等待连接";
-        var tone = status switch { "已连接" => "Green", "连接中" => "Coral", "连接失败" => "Coral", _ => "Offline" };
-        var brush = Color(tone);
+        SpeedStatusText.Text = status == "已连接" ? "已连接" : status is "连接中" or "正在恢复" ? status : "等待连接";
+        var brush = Color(presentation.Tone);
         BrandSignalBar1.Background = BrandSignalBar2.Background = BrandSignalBar3.Background = brush;
         CampusStatusDot.Fill = brush;
         SignalBar1.Background = SignalBar2.Background = SignalBar3.Background = brush;
-        CampusConnectionButton.ToolTip = _dialer.IsRequested ? "点击断开校园网" : "点击连接校园网";
-        var tray = status switch { "已连接" => TrayStatus.Connected, "连接中" => TrayStatus.Connecting, "连接失败" => TrayStatus.Error, _ => TrayStatus.Disconnected };
-        (System.Windows.Application.Current as App)?.SetTrayStatus(tray, "天翼校园：" + status);
+        (System.Windows.Application.Current as App)?.SetTrayStatus(presentation.Tray, "天翼校园：" + status + "。" + presentation.Detail);
         if (status == "已连接") AddSummary("认证成功", "校园网认证和心跳已确认。", "Green");
         else if (status == "连接失败") AddSummary("连接失败", "请在设置中查看详细日志。", "Coral");
         else if (status == "连接中") AddSummary(previous == "已连接" ? "正在重新认证" : "正在连接", "正在检测校园网并验证当前账户。", "Coral");
+        else if (status is "正在恢复" or "认证已暂停" or "恢复已暂停" or "用户已停止")
+            AddSummary(status, presentation.Detail, presentation.Tone);
         else if (previous.Length > 0) AddSummary("连接断开", "认证连接已停止。", "Offline");
         RefreshAccounts();
     }

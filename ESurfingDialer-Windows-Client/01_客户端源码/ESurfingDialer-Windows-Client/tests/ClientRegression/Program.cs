@@ -298,6 +298,7 @@ internal static partial class Program
             Call("OpenLogsButton_Click", window, new RoutedEventArgs()); Render("detailed-logs");
             WindowHealthChecks(window);
             PasswordChecks(window);
+            StatusChecks(window, output);
             InstanceChecks(output);
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));
