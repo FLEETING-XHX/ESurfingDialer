@@ -299,6 +299,7 @@ internal static partial class Program
             WindowHealthChecks(window);
             PasswordChecks(window);
             StatusChecks(window, output);
+            AccountFailureChecks(window);
             InstanceChecks(output);
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));

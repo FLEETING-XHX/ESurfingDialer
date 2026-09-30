@@ -35,6 +35,17 @@ public sealed class ClientConfig
         UserName = CurrentAccount?.UserName ?? "";
         ProtectedPassword = CurrentAccount?.ProtectedPassword ?? "";
     }
+
+    internal ClientConfig Copy() => new()
+    {
+        UserName = UserName, ProtectedPassword = ProtectedPassword,
+        AutoStart = AutoStart, StartMinimized = StartMinimized, AutoConnect = AutoConnect,
+        EnhancedConnection = EnhancedConnection, SelectedAccountId = SelectedAccountId,
+        Accounts = Accounts.Select(a => new CampusAccount
+        {
+            Id = a.Id, Name = a.Name, UserName = a.UserName, ProtectedPassword = a.ProtectedPassword
+        }).ToList()
+    };
 }
 
 public sealed class CampusAccount

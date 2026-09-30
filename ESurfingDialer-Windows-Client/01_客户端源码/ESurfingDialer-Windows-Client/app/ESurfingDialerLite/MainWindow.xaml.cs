@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private string? _editingId;
     private bool _exitRequested;
     private bool _busy;
+    private bool _accountOperation;
     private bool _disposed;
     private bool _refreshingHealth;
     private string _secretFingerprint = "";
@@ -136,7 +137,7 @@ public partial class MainWindow : Window
 
     private async void CampusConnectionButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy) return;
+        if (_busy || _accountOperation || _disposed) return;
         if (_dialer.IsRequested)
         {
             await StopConnectionAsync();
@@ -194,12 +195,12 @@ public partial class MainWindow : Window
             return true;
         }
         catch (Exception ex) { Notify("停止失败：" + ex.Message); return false; }
-        finally { _busy = false; CampusConnectionButton.IsEnabled = true; AccountSheet.IsEnabled = true; }
+        finally { _busy = false; CampusConnectionButton.IsEnabled = !_accountOperation; AccountSheet.IsEnabled = !_accountOperation; }
     }
 
     private async Task RefreshHealthAsync()
     {
-        if (_disposed || _busy) return;
+        if (_disposed || _busy || _accountOperation) return;
         var health = HealthSnapshot.Load();
         var now = DateTimeOffset.UtcNow;
         var usable = _dialer.IsRunning
@@ -470,76 +471,20 @@ public partial class MainWindow : Window
     }
     private void CancelAccountEdit_Click(object sender, RoutedEventArgs e) => ShowAccountList();
 
-    private async void SaveAccount_Click(object sender, RoutedEventArgs e)
-    {
-        if (_busy) return;
-        var username = UserTextBox.Text.Trim();
-        if (username.Length == 0 || PasswordBox.Password.Length == 0)
-        {
-            AccountErrorText.Text = "请填写校园网账号和密码。";
-            return;
-        }
-        if (_config.Accounts.Any(a => a.Id != _editingId && a.UserName == username))
-        {
-            AccountErrorText.Text = "这个账号已经添加，请直接编辑已有账户。";
-            return;
-        }
-        var account = _config.Accounts.FirstOrDefault(a => a.Id == _editingId) ?? new CampusAccount();
-        var wasCurrent = _config.SelectedAccountId == account.Id;
-        var reconnect = wasCurrent && _dialer.IsRequested;
-        try
-        {
-            var encrypted = PasswordProtector.Protect(PasswordBox.Password);
-            if (reconnect && !await StopConnectionAsync()) return;
-            account.UserName = username;
-            account.Name = AccountNameTextBox.Text.Trim();
-            account.ProtectedPassword = encrypted;
-            if (!_config.Accounts.Contains(account)) _config.Accounts.Add(account);
-            _config.SelectedAccountId ??= account.Id;
-            _configStore.Save(_config);
-            ShowAccountList();
-            Notify("账户已保存");
-            if (reconnect) await StartDialerAsync();
-        }
-        catch (Exception ex)
-        {
-            _config = _configStore.Load();
-            RefreshAccounts();
-            AccountErrorText.Text = "保存失败：" + ex.Message;
-        }
-    }
+    private async void SaveAccount_Click(object sender, RoutedEventArgs e) => await SaveAccountAsync();
 
     private async void SelectAccount_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy || (sender as Button)?.Tag is not string id) return;
-        if (_config.SelectedAccountId == id) { CloseAccounts(); return; }
-        var reconnect = _dialer.IsRequested;
-        if (reconnect && !await StopConnectionAsync()) return;
-        _config.SelectedAccountId = id;
-        try
-        {
-            _configStore.Save(_config);
-            RefreshAccounts();
-            CloseAccounts();
-            AddSummary("账户已切换", "当前校园网账户已更新。", "Offline");
-            if (reconnect) await StartDialerAsync();
-        }
-        catch (Exception ex) { _config = _configStore.Load(); RefreshAccounts(); Notify("切换失败：" + ex.Message); }
+        if ((sender as Button)?.Tag is string id) await SelectAccountAsync(id);
     }
 
     private async void DeleteAccount_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy) return;
-        if ((sender as Button)?.Tag is not string id) return;
+        if (_busy || _accountOperation || _disposed || (sender as Button)?.Tag is not string id) return;
         var account = _config.Accounts.FirstOrDefault(a => a.Id == id);
         if (account == null) return;
-        if (System.Windows.MessageBox.Show(this, $"删除账户“{account.DisplayName}”？删除当前账户会停止连接。", "删除账户", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        if (_config.SelectedAccountId == id && !await StopConnectionAsync()) return;
-        _config.Accounts.Remove(account);
-        if (_config.SelectedAccountId == id) _config.SelectedAccountId = _config.Accounts.FirstOrDefault()?.Id;
-        try { _configStore.Save(_config); Notify("账户已删除"); }
-        catch (Exception ex) { _config = _configStore.Load(); Notify("删除失败：" + ex.Message); }
-        RefreshAccounts();
+        if (System.Windows.MessageBox.Show(this, $"删除账户“{account.DisplayName}”？删除当前账户会停止连接。", "删除账户", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            await DeleteAccountAsync(id);
     }
 
     private void CloseAccounts()
