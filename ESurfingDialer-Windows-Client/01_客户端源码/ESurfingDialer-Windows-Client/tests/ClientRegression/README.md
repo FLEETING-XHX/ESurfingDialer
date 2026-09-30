@@ -16,6 +16,16 @@ dotnet run --project tests/ClientRegression/ClientRegression.csproj --no-restore
 
 --core 需要已构建的 core/client.jar 与 Java；本地 HTTP 服务替代联网探测，不进行校园网登录。--stress 使用 30 次含恢复的预热、200 次启停及 40 次恢复、2000 条界面事件、200 次配置保存，并按阶段采样测试进程资源。
 
+## 发布 EXE 启动检查
+
+上面的回归直接创建 MainWindow，不会执行 App.OnStartup。打包后还需检查实际程序入口，防止窗口回归通过但 EXE 启动失败：
+
+```powershell
+./tests/ClientRegression/Test-PublishedStartup.ps1 -PublishedDirectory ./dist/v2.3beta.2/ESurfingDialerLite -OutputDirectory ./artifacts/published-startup-beta2
+```
+
+脚本使用独立空账户配置、禁止自动连接，启动包内 EXE，检查进程存活、界面消息循环、启动日志、配置未改变及没有核心健康文件，并记录版本、DLL 摘要和 .NET 宿主路径。最后仅结束本轮创建的进程；不测试正常退出、升级/卸载或真实认证。输出目录必须是新目录，失败不能读取旧通过结果。
+
 ## 结果与失败处理
 
 - 退出码 0 表示本轮通过；非零表示失败。result.json 保存本轮结果与检查数量，机器字段使用英文。
