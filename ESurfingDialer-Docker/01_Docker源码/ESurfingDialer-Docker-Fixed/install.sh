@@ -13,6 +13,27 @@ fail() {
   exit 1
 }
 
+# Compose dotenv uses double-quote escapes followed by dollar interpolation.
+# Pass values on stdin (awk -v would interpret backslashes before encoding).
+write_dotenv_entry() {
+  printf '%s=' "$1"
+  printf '%s\n' "$2" | LC_ALL=C awk '
+    BEGIN { printf "\"" }
+    {
+      for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
+        if (c == "\\") printf "\\\\"
+        else if (c == "\"") printf "\\\""
+        else if (c == "$") printf "$$"
+        else if (c == "\r") printf "\\r"
+        else if (c == "\t") printf "\\t"
+        else printf "%s", c
+      }
+    }
+    END { printf "\"\n" }
+  '
+}
+
 command -v docker >/dev/null 2>&1 || fail "Docker is not installed or not in PATH."
 docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is not available. Please install docker compose first."
 
@@ -73,9 +94,12 @@ else
   fi
   [ -n "$dialer_password" ] || fail "Password cannot be empty."
 
-  cat > .env <<EOF
-DIALER_USER=$dialer_user
-DIALER_PASSWORD=$dialer_password
+  (
+    umask 077
+    {
+      write_dotenv_entry DIALER_USER "$dialer_user"
+      write_dotenv_entry DIALER_PASSWORD "$dialer_password"
+      cat <<EOF
 DIALER_IMAGE=$IMAGE_NAME
 DIALER_BACKEND=auto
 TZ=Asia/Shanghai
@@ -101,6 +125,8 @@ AUTO_REAUTH_ENABLED=1
 AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4
 AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 EOF
+    } > .env
+  )
   chmod 600 .env 2>/dev/null || true
 fi
 

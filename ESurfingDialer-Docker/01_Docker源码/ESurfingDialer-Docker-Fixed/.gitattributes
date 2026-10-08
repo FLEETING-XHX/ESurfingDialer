@@ -1,0 +1,4 @@
+*.sh text eol=lf
+*.awk text eol=lf
+*.py text eol=lf
+gradlew text eol=lf

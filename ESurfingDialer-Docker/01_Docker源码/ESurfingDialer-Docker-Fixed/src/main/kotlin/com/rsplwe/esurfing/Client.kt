@@ -3,26 +3,44 @@ package com.rsplwe.esurfing
 import com.rsplwe.esurfing.States.isRunning
 import com.rsplwe.esurfing.States.ticket
 import com.rsplwe.esurfing.hook.Session
+import okhttp3.ResponseBody
 import com.rsplwe.esurfing.network.NetResult
 import com.rsplwe.esurfing.network.post
 import com.rsplwe.esurfing.network.resetApiConnections
+import com.rsplwe.esurfing.network.readAuthenticationResponse
+import com.rsplwe.esurfing.network.readBoundedBody
 import com.rsplwe.esurfing.utils.ConnectivityStatus.*
+import com.rsplwe.esurfing.utils.NetworkConnectivityResult
 import com.rsplwe.esurfing.utils.checkConnectivity
 import com.rsplwe.esurfing.utils.getTime
 import org.apache.log4j.Logger
 import java.lang.Thread.sleep
 import kotlin.system.exitProcess
 
-class Client(private val options: Options) : Runnable {
+class Client(
+    private val options: Options,
+    private val sessionFactory: (ByteArray) -> AuthenticationSession = ::Session,
+    private val send: (String, String, HashMap<String, String>) -> NetResult<ResponseBody> = ::post,
+    private val probe: () -> NetworkConnectivityResult = { checkConnectivity() },
+) : Runnable {
 
     private val logger: Logger = Logger.getLogger(Client::class.java)
+    private val heartbeatLog = HeartbeatLog(logger)
     private var keepUrl = ""
     private var termUrl = ""
     private var keepRetrySeconds = RuntimeConfig.loginRetryInitialSeconds
     private var loginFailures = 0
     private var recoveries = 0
+    private val failureReports = AuthenticationFailureReports()
+    private var attemptedPortal = PortalCandidate()
+    private var lastFailedPortal: PortalCandidate? = null
 
-    var session: Session? = null
+    @Volatile var session: AuthenticationSession? = null
+        private set
+    private var context: AuthenticationContext? = null
+    private var sessionAlgorithm = ""
+    private fun active() = context ?: throw AuthenticationFailure("SESSION_CONTEXT_MISSING", true)
+    private fun request(url: String, data: String) = send(url, data, hashMapOf("Client-ID" to active().clientId, "Algo-ID" to sessionAlgorithm))
 
     @Volatile
     var tick: Long = 0
@@ -32,22 +50,31 @@ class Client(private val options: Options) : Runnable {
     override fun run() {
         HealthStatus.clientThreadAlive = true
         logger.info("APPLICATION_STARTED")
+        try {
+            runLoop()
+        } catch (_: InterruptedException) {
+            // Includes interrupts received while waiting inside an exception handler.
+            Thread.currentThread().interrupt()
+            logger.warn("CLIENT_THREAD_INTERRUPTED")
+        } finally {
+            States.cancelAuthorization()
+            HealthStatus.clientThreadAlive = false
+            // NIO file writes abort on an interrupted thread. Publish the final status, then restore it.
+            val interrupted = Thread.interrupted()
+            try { HealthStatus.write() }
+            finally { if (interrupted) Thread.currentThread().interrupt() }
+            logger.warn("CLIENT_THREAD_EXITED")
+        }
+    }
+
+    private fun runLoop() {
         while (isRunning) {
             try {
-                if (session != null && HealthStatus.authenticated && ReauthPlanner.shouldTriggerScheduledReauth()) {
-                    logger.info(
-                        "SCHEDULED_REAUTH_TRIGGERED nextAt=${ReauthPlanner.formatEpoch(ReauthPlanner.snapshot().nextPlannedReauthAt)} " +
-                            "window=${ReauthPlanner.safeWindowLabel()}"
-                    )
-                    authorization(AuthorizationTrigger.SCHEDULED)
+                HealthStatus.markClientProgress("loop")
+                if (States.hasPendingAuthorization()) {
+                    authorization(AuthorizationTrigger.PORTAL)
                     continue
                 }
-
-                if (States.networkStatus == DEFAULT) {
-                    sleep(1000)
-                    continue
-                }
-
                 if (session != null && HealthStatus.authenticated && ReauthPlanner.shouldTriggerScheduledReauth()) {
                     logger.info(
                         "SCHEDULED_REAUTH_TRIGGERED nextAt=${ReauthPlanner.formatEpoch(ReauthPlanner.snapshot().nextPlannedReauthAt)} " +
@@ -68,15 +95,18 @@ class Client(private val options: Options) : Runnable {
                     }
                 }
 
-                if (session != null && HealthStatus.authenticated && States.networkStatus != IS_REDIRECTS_FOUND_IP) {
+                if (session != null && HealthStatus.authenticated) {
                     if ((System.currentTimeMillis() - tick) >= (keepRetrySeconds * 1000)) {
-                        logger.info("HEARTBEAT_ATTEMPT")
+                        heartbeatLog.attempt()
                         try {
                             heartbeat(ticket)
+                            // markHeartbeatSuccess clears the failure count; retain it for the recovery log.
+                            val previousFailures = HealthStatus.consecutiveHeartbeatFailures.get()
                             HealthStatus.markHeartbeatSuccess()
                             recoveries = 0
-                            logger.info("HEARTBEAT_SUCCESS nextRetry=${keepRetrySeconds}s")
+                            heartbeatLog.success(previousFailures, keepRetrySeconds)
                         } catch (e: Exception) {
+                            ReauthPlanner.recordHeartbeatFailure(e is AuthenticationFailure && e.code.startsWith("HEARTBEAT_"))
                             val failures = HealthStatus.consecutiveHeartbeatFailures.incrementAndGet()
                             HealthStatus.markError("heartbeat failed: ${e.message}")
                             logger.warn("HEARTBEAT_FAILED count=$failures: ${e.message}", e)
@@ -85,7 +115,7 @@ class Client(private val options: Options) : Runnable {
                                 // term request can consume another 30 seconds and delay the
                                 // next login, so let the old session expire remotely.
                                 resetSessionState("heartbeat failure threshold reached")
-                                States.networkStatus = DEFAULT
+                                States.requestAuthorization(States.portalCandidate)
                             } else {
                                 keepRetrySeconds = (failures * 5L).coerceAtMost(30)
                             }
@@ -96,19 +126,19 @@ class Client(private val options: Options) : Runnable {
                     continue
                 }
 
-                if (States.networkStatus == SUCCESS) {
+                if (States.networkStatus == SUCCESS || States.networkStatus == DEFAULT) {
                     sleep(500)
                     continue
                 }
 
                 if (States.networkStatus == IS_REDIRECTS_NOT_FOUND_IP) {
-                    HealthStatus.markError("portal redirect missing user/ac ip")
-                    sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
+                    authorization(AuthorizationTrigger.PORTAL)
                     continue
                 }
 
                 if (States.networkStatus == REQUEST_ERROR) {
-                    sleep(RuntimeConfig.networkCheckIntervalSeconds * 1000)
+                    // Keep accepted requests responsive even with a long network probe interval.
+                    waitForRetry(minOf(RuntimeConfig.networkCheckIntervalSeconds, 5))
                     continue
                 }
 
@@ -119,85 +149,109 @@ class Client(private val options: Options) : Runnable {
                 Thread.currentThread().interrupt()
                 logger.warn("CLIENT_THREAD_INTERRUPTED")
                 break
+            } catch (e: AuthenticationFailure) {
+                ReauthPlanner.invalidateSample()
+                HealthStatus.markError(e.code + (e.portalDiagnostics?.let { " ${it.summary()}" } ?: ""))
+                resetSessionState("authorization failed", log = false)
+                if (attemptedPortal != lastFailedPortal) loginFailures = 0
+                lastFailedPortal = attemptedPortal
+                val delay = nextLoginRetrySeconds()
+                failureReports.report(e, attemptedPortal, delay)?.let { logger.warn(it) }
+                waitForRetry(delay, attemptedPortal)
             } catch (e: Exception) {
+                ReauthPlanner.invalidateSample()
                 HealthStatus.markError("client loop recovered: ${e.message}")
                 logger.error("CLIENT_LOOP_RECOVERED", e)
                 resetSessionState("unhandled exception in client loop")
                 val delay = nextLoginRetrySeconds()
-                sleep(delay * 1000)
+                waitForRetry(delay)
             }
         }
-        HealthStatus.clientThreadAlive = false
-        HealthStatus.write()
-        logger.warn("CLIENT_THREAD_EXITED")
     }
 
-    private fun authorization(trigger: AuthorizationTrigger) {
+    @Synchronized private fun authorization(trigger: AuthorizationTrigger) {
+        val request = States.beginAuthorization(trigger) ?: return
+        attemptedPortal = request.candidate
         if (session != null) {
-            val reason = when (trigger) {
+            val reason = when (request.trigger) {
                 AuthorizationTrigger.SCHEDULED -> "scheduled reauthorization"
                 AuthorizationTrigger.PORTAL -> "portal-triggered reauthorization"
                 AuthorizationTrigger.INITIAL -> "initial authorization"
             }
             resetSessionState(reason, terminateRemote = true)
         } else {
-            val reason = when (trigger) {
+            val reason = when (request.trigger) {
                 AuthorizationTrigger.SCHEDULED -> "starting scheduled authorization"
                 AuthorizationTrigger.PORTAL -> "starting authorization"
                 AuthorizationTrigger.INITIAL -> "starting initial authorization"
             }
-            clearSessionState(reason)
+            clearSessionState(reason, log = false)
         }
+        if (!isRunning) return
         States.algoId = "00000000-0000-0000-0000-000000000000"
 
-        logger.info("LOGIN_ATTEMPT userIp=${States.userIp} acIp=${States.acIp}")
+        HealthStatus.markClientProgress("portal_discovery", 60)
+        context = AuthenticationContext(attemptedPortal.discover(), States.clientId, States.macAddress)
+        if (!isRunning) return
+        sessionAlgorithm = States.algoId
+        logger.info("LOGIN_ATTEMPT endpointSource=${active().endpoints.source}")
+        HealthStatus.markClientProgress("native_init", 120)
         initSession()
+        if (!isRunning) return
         if ((session?.getSessionId() ?: 0) == 0.toLong()) {
             HealthStatus.markError("failed to initialize session")
             logger.error("LOGIN_FAILED failed to initialize session")
-            sleep(nextLoginRetrySeconds() * 1000)
+            waitForRetry(nextLoginRetrySeconds())
             return
         }
-        logger.info("Session ID: ${session?.getSessionId()}")
+        sessionAlgorithm = States.algoId
+        logger.info("NATIVE_SESSION_READY")
 
+        HealthStatus.markClientProgress("ticket", 120)
         ticket = getTicket()
-        logger.info("Ticket: ${maskSecret(ticket)}")
+        if (!isRunning) return
+        logger.info("TICKET_RECEIVED")
+        HealthStatus.markClientProgress("login", 120)
         login()
+        if (!isRunning) return
 
         if (keepUrl.isEmpty()) {
             HealthStatus.markError("keepUrl is empty")
             logger.error("LOGIN_FAILED KeepUrl is empty")
             resetSessionState("empty keepUrl")
-            sleep(nextLoginRetrySeconds() * 1000)
+            waitForRetry(nextLoginRetrySeconds())
             return
         }
 
+        HealthStatus.markClientProgress("confirmation", (RuntimeConfig.loginConfirmationAttempts * (RuntimeConfig.loginConfirmationIntervalSeconds + 90)).coerceAtMost(600))
         if (!confirmAuthentication()) {
+            if (!isRunning) return
             HealthStatus.markError("login response was not confirmed by connectivity checks")
             logger.error("LOGIN_NOT_CONFIRMED portal remained after login response")
             resetSessionState("login not confirmed", terminateRemote = true)
-            States.networkStatus = DEFAULT
-            sleep(nextLoginRetrySeconds() * 1000)
+            waitForRetry(nextLoginRetrySeconds())
             return
         }
 
-        States.networkStatus = SUCCESS
+        if (!States.completeAuthorization(request.version)) return
         loginFailures = 0
+        lastFailedPortal = null
+        failureReports.reset()
+        heartbeatLog.reset()
         recoveries = 0
         tick = System.currentTimeMillis()
-        ReauthPlanner.recordAuthSuccess(trigger)
-        HealthStatus.markLoginSuccess()
+        ReauthPlanner.recordAuthSuccess(request.trigger, networkKey = ReauthPlanner.networkKey(active().endpoints.userIp, active().endpoints.acIp))
         logger.info("LOGIN_SUCCESS")
     }
 
     private fun initSession() {
-        when (val result = post(States.ticketUrl, States.algoId)) {
+        when (val result = request(active().endpoints.ticketUrl, sessionAlgorithm)) {
             is NetResult.Success -> {
-                session = Session(result.data.bytes())
+                session = sessionFactory(readBoundedBody(result.data, "BOOTSTRAP", 1024 * 1024))
             }
 
             is NetResult.Error -> {
-                throw IllegalStateException(result.exception)
+                throw AuthenticationFailure("AUTH_TRANSPORT_ERROR")
             }
         }
     }
@@ -206,24 +260,24 @@ class Client(private val options: Options) : Runnable {
         val payload = """
             <?xml version="1.0" encoding="utf-8"?>
             <request>
-                <user-agent>${Constants.USER_AGENT}</user-agent>
-                <client-id>${States.clientId}</client-id>
-                <local-time>${getTime()}</local-time>
+                <user-agent>${AuthenticationProtocol.escape(Constants.USER_AGENT)}</user-agent>
+                <client-id>${AuthenticationProtocol.escape(active().clientId)}</client-id>
+                <local-time>${AuthenticationProtocol.escape(getTime())}</local-time>
                 <host-name>Xiaomi 6</host-name>
-                <ipv4>${States.userIp}</ipv4>
+                <ipv4>${AuthenticationProtocol.escape(active().endpoints.userIp)}</ipv4>
                 <ipv6></ipv6>
-                <mac>${States.macAddress}</mac>
+                <mac>${AuthenticationProtocol.escape(active().mac)}</mac>
                 <ostag>Xiaomi 6</ostag>
             </request>
         """.trimIndent()
-        when (val result = post(States.ticketUrl, session!!.encrypt(payload))) {
+        when (val result = request(active().endpoints.ticketUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> {
-                val data = session!!.decrypt(result.data.string())
-                return data.substringAfter("<ticket>").substringBefore("</ticket>")
+                val data = session!!.decrypt(readAuthenticationResponse(result.data, "AUTH"))
+                return AuthenticationProtocol.ticket(data)
             }
 
             is NetResult.Error -> {
-                throw IllegalStateException(result.exception)
+                throw AuthenticationFailure("AUTH_TRANSPORT_ERROR")
             }
         }
     }
@@ -232,86 +286,81 @@ class Client(private val options: Options) : Runnable {
         val payload = """
             <?xml version="1.0" encoding="utf-8"?>
             <request>
-                <user-agent>${Constants.USER_AGENT}</user-agent>
-                <client-id>${States.clientId}</client-id>
-                <local-time>${getTime()}</local-time>
-                <ticket>${ticket}</ticket>
-                <userid>${options.loginUser}</userid>
-                <passwd>${options.loginPassword}</passwd>
+                <user-agent>${AuthenticationProtocol.escape(Constants.USER_AGENT)}</user-agent>
+                <client-id>${AuthenticationProtocol.escape(active().clientId)}</client-id>
+                <local-time>${AuthenticationProtocol.escape(getTime())}</local-time>
+                <ticket>${AuthenticationProtocol.escape(ticket)}</ticket>
+                <userid>${AuthenticationProtocol.escape(options.loginUser)}</userid>
+                <passwd>${AuthenticationProtocol.escape(options.loginPassword)}</passwd>
             </request>
         """.trimIndent()
-        when (val result = post(Constants.AUTH_URL, session!!.encrypt(payload))) {
+        when (val result = request(active().endpoints.authUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> {
-                val data = session!!.decrypt(result.data.string())
-                logger.debug(data)
-                keepUrl = data.substringAfter("<keep-url><![CDATA[").substringBefore("]]></keep-url>")
-                termUrl = data.substringAfter("<term-url><![CDATA[").substringBefore("]]></term-url>")
-                keepRetrySeconds = parseRetrySeconds(
-                    data.substringAfter("<keep-retry>").substringBefore("</keep-retry>"),
-                    RuntimeConfig.loginRetryInitialSeconds
-                )
+                val data = session!!.decrypt(readAuthenticationResponse(result.data, "AUTH"))
+                val response = AuthenticationProtocol.login(data)
+                keepUrl = response.keepUrl
+                termUrl = response.termUrl
+                keepRetrySeconds = response.retrySeconds
+                logger.info("LOGIN_RESPONSE_VALIDATED")
 
-                logger.info("Keep Url: ${sanitizeUrl(keepUrl)}")
-                logger.info("Term Url: ${sanitizeUrl(termUrl)}")
                 logger.info("Keep Retry: $keepRetrySeconds")
             }
 
             is NetResult.Error -> {
-                throw IllegalStateException(result.exception)
+                throw AuthenticationFailure("AUTH_TRANSPORT_ERROR")
             }
         }
     }
 
-    private fun heartbeat(ticket: String) {
+    @Synchronized private fun heartbeat(ticket: String) {
+        HealthStatus.markClientProgress("heartbeat", 120)
         val payload = """
             <?xml version="1.0" encoding="utf-8"?>
             <request>
-                <user-agent>${Constants.USER_AGENT}</user-agent>
-                <client-id>${States.clientId}</client-id>
-                <local-time>${getTime()}</local-time>
+                <user-agent>${AuthenticationProtocol.escape(Constants.USER_AGENT)}</user-agent>
+                <client-id>${AuthenticationProtocol.escape(active().clientId)}</client-id>
+                <local-time>${AuthenticationProtocol.escape(getTime())}</local-time>
                 <host-name>Xiaomi 6</host-name>
-                <ipv4>${States.userIp}</ipv4>
-                <ticket>${ticket}</ticket>
+                <ipv4>${AuthenticationProtocol.escape(active().endpoints.userIp)}</ipv4>
+                <ticket>${AuthenticationProtocol.escape(ticket)}</ticket>
                 <ipv6></ipv6>
-                <mac>${States.macAddress}</mac>
+                <mac>${AuthenticationProtocol.escape(active().mac)}</mac>
                 <ostag>Xiaomi 6</ostag>
             </request>
         """.trimIndent()
-        when (val result = post(keepUrl, session!!.encrypt(payload))) {
+        when (val result = request(keepUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> {
-                val data = session!!.decrypt(result.data.string())
-                keepRetrySeconds = parseRetrySeconds(
-                    data.substringAfter("<interval>").substringBefore("</interval>"),
-                    keepRetrySeconds
-                )
+                val data = session!!.decrypt(readAuthenticationResponse(result.data, "AUTH"))
+                keepRetrySeconds = AuthenticationProtocol.heartbeat(data)
             }
 
             is NetResult.Error -> {
-                throw IllegalStateException(result.exception)
+                throw AuthenticationFailure("AUTH_TRANSPORT_ERROR")
             }
         }
     }
 
-    fun term() {
+    @Synchronized fun term() {
         if (session == null || termUrl.isEmpty() || ticket.isEmpty()) return
+        HealthStatus.markClientProgress("termination", 120)
         val payload = """
             <?xml version="1.0" encoding="utf-8"?>
             <request>
-                <user-agent>${Constants.USER_AGENT}</user-agent>
-                <client-id>${States.clientId}</client-id>
-                <local-time>${getTime()}</local-time>
+                <user-agent>${AuthenticationProtocol.escape(Constants.USER_AGENT)}</user-agent>
+                <client-id>${AuthenticationProtocol.escape(active().clientId)}</client-id>
+                <local-time>${AuthenticationProtocol.escape(getTime())}</local-time>
                 <host-name>Xiaomi 6</host-name>
-                <ipv4>${States.userIp}</ipv4>
-                <ticket>${ticket}</ticket>
+                <ipv4>${AuthenticationProtocol.escape(active().endpoints.userIp)}</ipv4>
+                <ticket>${AuthenticationProtocol.escape(ticket)}</ticket>
                 <ipv6></ipv6>
-                <mac>${States.macAddress}</mac>
+                <mac>${AuthenticationProtocol.escape(active().mac)}</mac>
                 <ostag>Xiaomi 6</ostag>
             </request>
         """.trimIndent()
-        when (val result = post(termUrl, session!!.encrypt(payload))) {
+        when (val result = request(termUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> result.data.close()
             is NetResult.Error -> {
-                logger.warn("SESSION_TERMINATE_FAILED ${result.exception.message}")
+                logger.warn("SESSION_TERMINATE_FAILED AUTH_TRANSPORT_ERROR")
             }
         }
     }
@@ -319,7 +368,10 @@ class Client(private val options: Options) : Runnable {
     private fun confirmAuthentication(): Boolean {
         var sawPortal = false
         repeat(RuntimeConfig.loginConfirmationAttempts) { index ->
+            if (!isRunning) return false
+            HealthStatus.markClientProgress("confirmation_wait", RuntimeConfig.loginConfirmationIntervalSeconds + 15)
             sleep(RuntimeConfig.loginConfirmationIntervalSeconds * 1000)
+            if (!isRunning) return false
             try {
                 // The keep endpoint is the authoritative proof that the login
                 // response was accepted.  A probe can be inconclusive behind a
@@ -328,16 +380,19 @@ class Client(private val options: Options) : Runnable {
                 logger.info("LOGIN_CONFIRMED attempt=${index + 1}")
                 return true
             } catch (heartbeatError: Exception) {
-                val result = checkConnectivity()
+                if (!isRunning) return false
+                HealthStatus.markClientProgress("confirmation_probe", RuntimeConfig.networkProbeBudgetSeconds + 15)
+                val result = probe()
+                ReauthPlanner.observeNetwork(result)
                 when (result.status) {
                     IS_REDIRECTS_FOUND_IP -> {
                         sawPortal = true
-                        States.userIp = result.userIp.orEmpty()
-                        States.acIp = result.acIp.orEmpty()
+                        States.requestInitialAuthorization(rememberPortal(result))
                         logger.warn("LOGIN_CONFIRMATION_PORTAL attempt=${index + 1} userIp=${States.userIp} acIp=${States.acIp} heartbeat=${heartbeatError.message}")
                     }
 
                     IS_REDIRECTS_NOT_FOUND_IP -> {
+                        States.requestInitialAuthorization(rememberPortal(result))
                         sawPortal = true
                         logger.warn("LOGIN_CONFIRMATION_PORTAL_MISSING_IP attempt=${index + 1} heartbeat=${heartbeatError.message}")
                     }
@@ -352,7 +407,7 @@ class Client(private val options: Options) : Runnable {
         return false
     }
 
-    private fun resetSessionState(reason: String, terminateRemote: Boolean = false) {
+    @Synchronized private fun resetSessionState(reason: String, terminateRemote: Boolean = false, log: Boolean = true) {
         val hadSession = session != null || HealthStatus.authenticated
         if (terminateRemote && session != null) {
             try {
@@ -361,7 +416,7 @@ class Client(private val options: Options) : Runnable {
                 logger.warn("SESSION_TERMINATE_RECOVERY_FAILED ${e.message}")
             }
         }
-        clearSessionState(reason)
+        clearSessionState(reason, log)
         if (!hadSession) return
         recoveries++
         if (recoveries >= RuntimeConfig.maxRecoveriesBeforeExit) {
@@ -371,28 +426,40 @@ class Client(private val options: Options) : Runnable {
         }
     }
 
-    private fun clearSessionState(reason: String) {
-        logger.warn("SESSION_RESET reason=$reason")
+    @Synchronized private fun clearSessionState(reason: String, log: Boolean = true) {
+        if (log) logger.warn("SESSION_RESET reason=$reason")
+        HealthStatus.markClientProgress("native_cleanup", 120)
         try {
             session?.free()
         } catch (e: Exception) {
             logger.warn("Failed to free session: ${e.message}")
         }
         session = null
+        context = null
+        sessionAlgorithm = ""
         keepUrl = ""
         termUrl = ""
         keepRetrySeconds = RuntimeConfig.loginRetryInitialSeconds
+        heartbeatLog.reset()
         ticket = ""
         HealthStatus.resetSession()
         resetApiConnections()
     }
 
-    private fun parseRetrySeconds(value: String?, fallback: Long): Long {
-        val parsed = value
-            ?.trim()
-            ?.toLongOrNull()
-            ?: fallback
-        return parsed.coerceIn(5, RuntimeConfig.heartbeatIntervalMaxSeconds)
+    @Synchronized fun shutdown() {
+        States.cancelAuthorization()
+        try { term() } finally { clearSessionState("shutdown") }
+    }
+
+    private fun waitForRetry(seconds: Long, failedPortal: PortalCandidate? = null) {
+        var remaining = seconds
+        while (remaining > 0 && isRunning) {
+            if (failedPortal != null && States.retryCandidate() != failedPortal) return
+            val chunk = minOf(remaining, 5)
+            HealthStatus.markClientProgress("retry_wait", chunk + 15)
+            sleep(chunk * 1000)
+            remaining -= chunk
+        }
     }
 
     private fun nextLoginRetrySeconds(): Long {
@@ -401,9 +468,4 @@ class Client(private val options: Options) : Runnable {
         return delay.coerceAtMost(RuntimeConfig.loginRetryMaxSeconds)
     }
 
-    private fun maskSecret(value: String): String =
-        if (value.length > 8) "${value.take(4)}...${value.takeLast(4)}" else "***"
-
-    private fun sanitizeUrl(value: String): String =
-        value.replace(Regex("(?i)(ticket|token|key|passwd|password)=([^&]+)"), "$1=***")
 }

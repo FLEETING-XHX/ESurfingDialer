@@ -13,12 +13,14 @@ object RuntimeConfig {
     val portalReauthCooldownSeconds: Long = envLong("PORTAL_REAUTH_COOLDOWN_SECONDS", 300, 30, 7200)
     val loginConfirmationAttempts: Int = envInt("LOGIN_CONFIRMATION_ATTEMPTS", 3, 1, 10)
     val loginConfirmationIntervalSeconds: Long = envLong("LOGIN_CONFIRMATION_INTERVAL_SECONDS", 2, 1, 30)
-    val healthWriteIntervalSeconds: Long = envLong("HEALTH_WRITE_INTERVAL_SECONDS", 5, 1, 300)
+    val healthWriteIntervalSeconds: Long = envLong("HEALTH_WRITE_INTERVAL_SECONDS", 10, 1, 300)
     val healthAuthMaxAgeSeconds: Long = envLong("HEALTH_AUTH_MAX_AGE_SECONDS", 900, 30, 7200)
     val maxRecoveriesBeforeExit: Int = envInt("MAX_RECOVERIES_BEFORE_EXIT", 30, 3, 1000)
     val autoReauthEnabled: Boolean = envInt("AUTO_REAUTH_ENABLED", 1, 0, 1) == 1
     val autoReauthSafeWindowStartHour: Int = envInt("AUTO_REAUTH_SAFE_WINDOW_START_HOUR", 4, 0, 23)
     val autoReauthSafeWindowEndHour: Int = envInt("AUTO_REAUTH_SAFE_WINDOW_END_HOUR", 6, 0, 24)
+
+    val networkProbeBudgetSeconds: Long = envLong("NETWORK_PROBE_BUDGET_SECONDS", 60, 1, 180)
 
     val networkCheckUrls: List<String> = env("NETWORK_CHECK_URLS", "")
         .split(",")
