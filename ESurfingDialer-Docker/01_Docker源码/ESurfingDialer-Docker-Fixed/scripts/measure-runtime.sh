@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-container="${CONTAINER_NAME:-ESurfingDialer-Beta2}"
+container="${CONTAINER_NAME:-ESurfingDialer-Beta3}"
 samples="${1:-10}"
 interval="${INTERVAL_SECONDS:-60}"
 case "$samples:$interval" in ''|*[!0-9:]*) exit 2 ;; esac

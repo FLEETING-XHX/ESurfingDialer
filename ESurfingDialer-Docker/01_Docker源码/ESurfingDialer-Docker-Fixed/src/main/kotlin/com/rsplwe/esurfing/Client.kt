@@ -25,6 +25,7 @@ class Client(
 ) : Runnable {
 
     private val logger: Logger = Logger.getLogger(Client::class.java)
+    private val heartbeatLog = HeartbeatLog(logger)
     private var keepUrl = ""
     private var termUrl = ""
     private var keepRetrySeconds = RuntimeConfig.loginRetryInitialSeconds
@@ -96,12 +97,14 @@ class Client(
 
                 if (session != null && HealthStatus.authenticated) {
                     if ((System.currentTimeMillis() - tick) >= (keepRetrySeconds * 1000)) {
-                        logger.info("HEARTBEAT_ATTEMPT")
+                        heartbeatLog.attempt()
                         try {
                             heartbeat(ticket)
+                            // markHeartbeatSuccess clears the failure count; retain it for the recovery log.
+                            val previousFailures = HealthStatus.consecutiveHeartbeatFailures.get()
                             HealthStatus.markHeartbeatSuccess()
                             recoveries = 0
-                            logger.info("HEARTBEAT_SUCCESS nextRetry=${keepRetrySeconds}s")
+                            heartbeatLog.success(previousFailures, keepRetrySeconds)
                         } catch (e: Exception) {
                             ReauthPlanner.recordHeartbeatFailure(e is AuthenticationFailure && e.code.startsWith("HEARTBEAT_"))
                             val failures = HealthStatus.consecutiveHeartbeatFailures.incrementAndGet()
@@ -234,6 +237,7 @@ class Client(
         loginFailures = 0
         lastFailedPortal = null
         failureReports.reset()
+        heartbeatLog.reset()
         recoveries = 0
         tick = System.currentTimeMillis()
         ReauthPlanner.recordAuthSuccess(request.trigger, networkKey = ReauthPlanner.networkKey(active().endpoints.userIp, active().endpoints.acIp))
@@ -436,6 +440,7 @@ class Client(
         keepUrl = ""
         termUrl = ""
         keepRetrySeconds = RuntimeConfig.loginRetryInitialSeconds
+        heartbeatLog.reset()
         ticket = ""
         HealthStatus.resetSession()
         resetApiConnections()

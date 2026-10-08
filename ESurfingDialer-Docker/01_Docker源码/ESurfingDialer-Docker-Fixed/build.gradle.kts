@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.rsplwe.esurfing"
-version = "1.4.0-beta.2"
+version = "1.4.0-beta.3"
 
 repositories {
     maven(url = "https://maven.aliyun.com/repository/public")

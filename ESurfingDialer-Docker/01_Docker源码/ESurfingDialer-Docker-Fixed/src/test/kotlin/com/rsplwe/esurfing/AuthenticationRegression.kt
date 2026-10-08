@@ -35,6 +35,9 @@ object AuthenticationRegression {
         portalHttp()
         clientIntegration()
         checks += PortalRegression.run()
+        checks += PortalDiagnosticRegression.run()
+        checks += PortalCompatibilityRegression.run()
+        checks += HeartbeatLogRegression.run()
         println("Docker authentication regression: $checks checks passed")
     }
 

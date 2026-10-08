@@ -9,15 +9,16 @@ import gzip
 import hashlib
 import io
 import json
+import shutil
 import subprocess
 from pathlib import Path
 import tarfile
 import zipfile
 
 BASE_SHA256 = "93bca5389a75eb997f1aec0d0316f433401e758129f01d7fa862ffb2bb9fb5fd"
-VERSION = "v1.4.0-beta.2"
-CONTAINER = "ESurfingDialer-Beta2"
-PROJECT = "esurfing-dialer-beta2"
+VERSION = "v1.4.0-beta.3"
+CONTAINER = "ESurfingDialer-Beta3"
+PROJECT = "esurfing-dialer-beta3"
 TAG = "esurfing-dialer:" + VERSION
 NAME = "ESurfingDialer-Docker-" + VERSION
 
@@ -44,7 +45,7 @@ def blob(archive, data):
     return "sha256:" + hash_value
 
 
-def image(base, jar, source, output):
+def image(base, jar, source, output, build_id):
     now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
     layer_bytes = io.BytesIO()
     with tarfile.open(fileobj=layer_bytes, mode="w", format=tarfile.PAX_FORMAT) as layer:
@@ -74,7 +75,8 @@ def image(base, jar, source, output):
         config["rootfs"]["diff_ids"].append(new_digest)
         config["created"] = now
         config.setdefault("history", []).append({"created": now, "created_by": "Local beta: verified v1.3 runtime + updated client.jar and updated runtime scripts"})
-        config["config"].setdefault("Labels", {}).update({"org.opencontainers.image.version": VERSION, "esurfing.release.channel": "beta", "esurfing.base.sha256": BASE_SHA256})
+        config["config"].setdefault("Labels", {}).update({"org.opencontainers.image.version": VERSION, "esurfing.release.channel": "beta", "esurfing.base.sha256": BASE_SHA256,
+            "esurfing.build.id": build_id, "esurfing.jar.sha256": digest(jar.read_bytes())})
         config_data = serialized(config)
         config_digest = blob(target, config_data)
         manifest = {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
@@ -118,6 +120,7 @@ def main():
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--jar", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--build-id", default=VERSION)
     args = parser.parse_args()
     source = Path(__file__).resolve().parent.parent
     assert hashlib.file_digest(args.base.open("rb"), "sha256").hexdigest() == BASE_SHA256, "Released base checksum mismatch"
@@ -126,10 +129,13 @@ def main():
     package.mkdir(parents=True)
     (package / "images").mkdir()
     image_path = package / "images" / ("esurfing-dialer-" + VERSION + "-amd64.tar.gz")
-    metadata = image(args.base, args.jar, source, image_path)
+    metadata = image(args.base, args.jar, source, image_path, args.build_id)
     metadata.update(version=VERSION, containerName=CONTAINER, composeProject=PROJECT,
         sourceRevision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip(),
-        sourceDirty=bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no", "--", "."], cwd=source, text=True).strip()))
+        sourceDirty=bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal", "--", "."], cwd=source, text=True).strip()), buildId=args.build_id)
+    metadata.update(architecture="linux/amd64", startupMode="create-only", deliveryMethod="verified-v1.3-runtime-plus-current-jar", daemonBuildVerified=False)
+    source_files = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "."], cwd=source).decode("utf-8").split("\0")
+    metadata["sourceFilesSha256"] = {name: digest((source / name).read_bytes()) for name in sorted(set(source_files)) if name and (source / name).is_file()}
     verify_image(image_path, args.jar)
     for name in [".env.example", "docker-compose.yml", "install.sh", "LICENSE", "CHANGELOG.md"]:
         text = (source / name).read_text(encoding="utf-8")
@@ -147,9 +153,42 @@ def main():
             anchor = 'free_kb="$(df'
             preflight = 'if docker inspect ' + CONTAINER + ' >/dev/null 2>&1; then\n  fail "' + CONTAINER + ' already exists. Use the beta directory and explicit Compose commands to update it."\nfi\n\n'
             text = text.replace(anchor, preflight + anchor, 1)
+            # Deploy alongside stable, but leave authentication explicitly stopped.
+            text = text.replace("Starting " + CONTAINER + " with local image only.", "Creating " + CONTAINER + " without starting it. Run sh start-beta3.sh when ready.")
+            text = text.replace("docker compose --project-name " + PROJECT + " up -d --no-build --pull never", "docker compose --project-name " + PROJECT + " create --no-build --pull never")
+            text = text.replace("docker ps --filter", "docker ps -a --filter")
+            text = text.split('info "Recent logs:"')[0] + 'info "Container created but not started. Stop the stable container, then run sh start-beta3.sh."\n'
         (package / name).write_text(text, encoding="utf-8", newline="\n")
+    # Optional rebuild uses exactly the packaged JAR/scripts; offline import remains available.
+    (package / "build/libs").mkdir(parents=True)
+    shutil.copyfile(args.jar, package / "build/libs" / args.jar.name)
+    (package / "Dockerfile.runtime").write_text((source / "Dockerfile.runtime").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+    (package / "docker-compose.build.yml").write_text(
+        "services:\n  esurfing-dialer:\n    build:\n      context: .\n      dockerfile: Dockerfile.runtime\n", encoding="utf-8", newline="\n")
+    (package / ".dockerignore").write_text("*\n!Dockerfile.runtime\n!build/\n!build/libs/\n!build/libs/*-all.jar\n!docker/\n!docker/*.sh\n!docker/*.awk\n", encoding="ascii", newline="\n")
+    (package / "start-beta3.sh").write_text(r'''#!/bin/sh
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+case "$#:${1:-}" in
+  0:) ;;
+  1:--force-recreate) ;;
+  *) printf 'Usage: sh start-beta3.sh [--force-recreate]\n' >&2; exit 2 ;;
+esac
+docker info >/dev/null
+for other in ESurfingDialer ESurfingDialer-Beta ESurfingDialer-Beta2; do
+  running="$(docker inspect --format '{{.State.Running}}' "$other" 2>/dev/null || true)"
+  if [ "$running" = true ]; then
+    printf 'ERROR: %s is running. Stop it before starting ESurfingDialer-Beta3.\n' "$other" >&2
+    exit 1
+  fi
+done
+docker compose --project-name esurfing-dialer-beta3 up -d "$@" --no-build --pull never
+''', encoding="utf-8", newline="\n")
     (package / "scripts").mkdir()
     (package / "docker").mkdir()
+    for runtime_file in (source / "docker").iterdir():
+        if runtime_file.suffix in (".sh", ".awk"):
+            (package / "docker" / runtime_file.name).write_bytes(runtime_file.read_bytes().replace(b"\r\n", b"\n"))
     watchdog = (source / "scripts/openwrt-watchdog.sh").read_text(encoding="utf-8")
     watchdog = watchdog.replace("${CONTAINER_NAME:-ESurfingDialer}", "${CONTAINER_NAME:-" + CONTAINER + "}")
     (package / "scripts/openwrt-watchdog.sh").write_text(watchdog, encoding="utf-8", newline="\n")
@@ -157,6 +196,7 @@ def main():
     (package / "docker/health-state.sh").write_text((source / "docker/health-state.sh").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     (package / "README_BETA.md").write_text((source / "README_BETA.md").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     (package / "VERSION").write_text(VERSION + "\n", encoding="utf-8")
+    (package / "BUILD_ID").write_text(args.build_id + "\n", encoding="utf-8")
     (package / "BUILDINFO.json").write_bytes(serialized(metadata))
     checksums = []
     for file in sorted(package.rglob("*")):

@@ -62,7 +62,7 @@ object PortalRegression {
         val absent = failure("PORTAL_AUTH_URL_MISSING") { PortalConfiguration.parse(missing) }
         verify("missing counts attached", absent.portalDiagnostics?.authFields == 0 && absent.portalDiagnostics?.ticketFields == 1)
         failure("PORTAL_TICKET_URL_MISSING") { PortalConfiguration.parse(page(fields.replace("ticket-url", "other-url"))) }
-        failure("PORTAL_AUTH_URL_DUPLICATE") { PortalConfiguration.parse(page("<auth-url>$auth</auth-url>$fields")) }
+        failure("PORTAL_AUTH_URL_DUPLICATE") { PortalConfiguration.parse(page("<auth-url>http://other.test/auth.cgi</auth-url>$fields")) }
         failure("PORTAL_TICKET_URL_DUPLICATE") { PortalConfiguration.parse(page("$fields<ticket-url><![CDATA[$ticket]]></ticket-url>")) }
         failure("PORTAL_AUTH_URL_EMPTY") { PortalConfiguration.parse(page(fields.replace("<![CDATA[$auth]]>", " "))) }
         failure("PORTAL_TICKET_URL_EMPTY") { PortalConfiguration.parse(page(fields.replace("<![CDATA[$ticket]]>", ""))) }
@@ -70,10 +70,54 @@ object PortalRegression {
         parses("unique fields inside configuration wrappers", page(fields.replace("<auth-url>", "<nested><auth-url>").replace("</auth-url>", "</auth-url></nested>")))
         failure("PORTAL_CONFIG_DUPLICATE") { PortalConfiguration.parse(valid + valid) }
         failure("PORTAL_CONFIG_TRUNCATED") { PortalConfiguration.parse(valid.substringBefore("//config.campus.js.chinatelecom.com-->")) }
-        failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page(fields.replace("</auth-url>", ""))) }
-        failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page("<!DOCTYPE x [<!ENTITY secret SYSTEM 'file:///never-read'>]>$fields")) }
-        failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page(fields.replace("<![CDATA[$auth]]>", "&unknown;"))) }
-        failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page("<x>".repeat(70) + fields + "</x>".repeat(70))) }
+        val malformed = failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page(fields.replace("</auth-url>", ""))) }
+        verify("XML syntax stage and positions retained", malformed.portalDiagnostics?.let {
+            it.xmlStage == PortalXmlStage.XML_PARSE && it.xmlLine > 0 && it.xmlColumn > 0 && it.configChars > 0
+        } == true)
+        verify("unparsed fields remain unknown", malformed.portalDiagnostics?.let {
+            it.authFields == -1 && it.ticketFields == -1 && it.configBlocks == 1
+        } == true)
+        verify("mismatched tag reports fixed syntax category", malformed.portalDiagnostics?.xmlIssue == PortalXmlIssue.TAG_MISMATCH)
+        verify("unrecognized parser text stays a fixed fallback", PortalXmlIssue.fromMessage("private cdata section value") == PortalXmlIssue.OTHER_XML_SYNTAX)
+        for (newline in listOf("\n", "\r\n")) {
+            val attribute = failure("PORTAL_CONFIG_XML_INVALID") {
+                PortalConfiguration.parse(page("<extra>${newline}<item link=\"http://private.test/?a=1&private-entity\"/>${newline}</extra>$fields"))
+            }
+            verify("attribute query error classified without raw message", attribute.portalDiagnostics?.let {
+                it.xmlIssue == PortalXmlIssue.ENTITY_REFERENCE && it.xmlContext == PortalXmlContext.ATTRIBUTE && it.xmlLine > 1
+            } == true && attribute.cause == null && !attribute.portalDiagnostics.toString().contains("private"))
+        }
+        val attributeCases = listOf(
+            "<item private-attribute=\"one\" private-attribute=\"two\"/>" to PortalXmlIssue.DUPLICATE_ATTRIBUTE,
+            "<item private-attribute=\"raw<value\"/>" to PortalXmlIssue.ATTRIBUTE_LT,
+            "<item private-attribute=unquoted/>" to PortalXmlIssue.ATTRIBUTE_QUOTE,
+        )
+        for ((markup, issue) in attributeCases) {
+            val error = failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page(markup + fields)) }
+            verify("attribute syntax category retained without names or values", error.portalDiagnostics?.xmlIssue == issue &&
+                !error.portalDiagnostics.toString().contains("private-attribute"))
+        }
+        val providerProperty = "javax.xml.parsers.DocumentBuilderFactory"
+        val previousProvider = System.getProperty(providerProperty)
+        try {
+            System.setProperty(providerProperty, "fixture-secret-parser-not-found")
+            val setup = failure("PORTAL_XML_PARSER_SETUP_FAILED") { PortalConfiguration.parse(valid) }
+            verify("provider failure distinguished from malformed content", setup.portalDiagnostics?.let {
+                it.xmlStage == PortalXmlStage.PARSER_SETUP && it.xmlLine == -1 && it.xmlColumn == -1 && it.configChars > 0
+            } == true)
+            verify("provider failure does not expose provider names or cause", setup.cause == null &&
+                !setup.toString().contains("fixture-secret") && !setup.portalDiagnostics.toString().contains("fixture-secret"))
+        } finally {
+            if (previousProvider == null) System.clearProperty(providerProperty)
+            else System.setProperty(providerProperty, previousProvider)
+        }
+        parses("provider restored after diagnostic failure", valid)
+        val dtd = failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page("<!DOCTYPE x [<!ENTITY secret SYSTEM 'file:///never-read'>]>$fields")) }
+        verify("DTD rejection stays an XML parse failure without exposing cause", dtd.portalDiagnostics?.xmlStage == PortalXmlStage.XML_PARSE && dtd.cause == null)
+        val entity = failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page(fields.replace("<![CDATA[$auth]]>", "&unknown;"))) }
+        verify("undeclared entity classified without entity name", entity.portalDiagnostics?.xmlIssue == PortalXmlIssue.UNDECLARED_ENTITY)
+        val deep = failure("PORTAL_CONFIG_XML_INVALID") { PortalConfiguration.parse(page("<x>".repeat(70) + fields + "</x>".repeat(70))) }
+        verify("depth rejection has safe limit category", deep.portalDiagnostics?.xmlIssue == PortalXmlIssue.DEPTH_LIMIT)
         failure("PORTAL_BODY_TOO_LARGE") { PortalConfiguration.parse("x".repeat(128 * 1024 + 1)) }
         failure("PORTAL_AUTH_URL_INVALID") { PortalConfiguration.parse(page(fields.replace(auth, "http://127.0.0.1/auth.cgi"))) }
         failure("PORTAL_TICKET_URL_INVALID") { PortalConfiguration.parse(page(fields.replace(ticket, "file:///ticket.cgi"))) }
@@ -103,7 +147,12 @@ object PortalRegression {
                 exchange.sendResponseHeaders(302, -1)
             } else {
                 exchange.responseHeaders.add("Content-Type", "text/html; private=never-log-this")
-                val body = when (path) { "/valid" -> valid; "/missing" -> missing; else -> "ordinary page" }.toByteArray()
+            val body = when (path) {
+                "/valid" -> valid
+                "/missing" -> missing
+                "/malformed" -> page("<private-account>$fields")
+                else -> "ordinary page"
+            }.toByteArray()
                 exchange.sendResponseHeaders(if (path == "/error") 503 else 200, body.size.toLong())
                 exchange.responseBody.write(body)
             }
@@ -126,6 +175,14 @@ object PortalRegression {
                 it.httpStatus == 200 && it.mediaType == PortalMediaType.HTML && it.hop == 2 && it.authFields == 0 && it.ticketFields == 1 && it.bodyBytes > 0
             } == true)
             verify("metadata excludes URL and header parameters", !e.portalDiagnostics.toString().contains("never-log-this"))
+            val malformed = failure("PORTAL_CONFIG_XML_INVALID") {
+                PortalConfiguration.discover("$base/malformed", null, "", "", client)
+            }
+            verify("HTTP metadata and XML diagnostics both survive discovery", malformed.portalDiagnostics?.let {
+                it.httpStatus == 200 && it.mediaType == PortalMediaType.HTML && it.hop == 1 &&
+                    it.xmlStage == PortalXmlStage.XML_PARSE && it.xmlLine > 0 && it.xmlColumn > 0 && it.configChars > 0
+            } == true)
+            verify("HTTP syntax failure summary does not expose malformed names", !malformed.portalDiagnostics.toString().contains("private-account"))
             val cached = failure("PORTAL_AUTH_URL_MISSING") { PortalConfiguration.discover("$base/plain", missing, "10.0.0.2", "10.0.0.1", client) }
             verify("cached field counts distinguished from current HTTP response", cached.portalDiagnostics?.cachedConfig == true)
             failure("PORTAL_AUTH_URL_MISSING") { PortalConfiguration.discover(null, missing, "10.0.0.2", "10.0.0.1", client) }

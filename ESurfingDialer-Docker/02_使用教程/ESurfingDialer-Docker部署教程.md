@@ -4,6 +4,8 @@
 
 本教程只使用离线部署包。软路由不需要访问 Docker Hub、GitHub、Gradle 或 Maven；只需要在电脑上提前下载压缩包，再通过局域网上传到软路由。
 
+当前正式附件为 `ESurfingDialer-Docker-v1.3.zip`，从[v1.3 发布页面](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v1.3)下载。下方旧解压目录名仅作示例，以实际包含 `install.sh` 的目录为准。个人 beta 使用[独立测试步骤](../01_Docker源码/ESurfingDialer-Docker-Fixed/README_BETA.md)，不套用本教程覆盖正式版。
+
 ## 第一步：安装 OpenWrt 或 iStoreOS
 
 如果软路由还没有安装系统，请先参考下面的视频完成 OpenWrt / iStoreOS 的安装：
@@ -40,7 +42,7 @@
 
 推荐直接使用 `/root` 目录：
 
-1. 在电脑左侧找到下载好的 `ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip`。
+1. 在电脑左侧找到下载好的 `ESurfingDialer-Docker-v1.3.zip`。
 2. 确认右侧当前目录是 `/root`。
 3. 将压缩包直接拖到右侧窗口，等待上传完成。
 
@@ -49,7 +51,7 @@
 上传完成后，右侧应能看到：
 
 ```text
-/root/ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip
+/root/ESurfingDialer-Docker-v1.3.zip
 ```
 
 ## 第三步：使用 Windows CMD 连接软路由终端
@@ -87,13 +89,13 @@ pwd
 先确认压缩包存在：
 
 ```sh
-ls -lh ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip
+ls -lh ESurfingDialer-Docker-v1.3.zip
 ```
 
 使用 `unzip` 解压：
 
 ```sh
-unzip ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3.zip
+unzip ESurfingDialer-Docker-v1.3.zip
 ```
 
 如果提示没有 `unzip` 命令，先在软路由的软件包管理页面安装 `unzip`。这只是在安装解压工具，不是下载 Docker 镜像。
@@ -124,6 +126,8 @@ sh install.sh
 
 输入校园网密码时不会显示字符，输入完成后按回车即可。
 
+v1.3 旧安装脚本尚未包含后续特殊字符转义修复。凭据含美元符号、引号或反斜线时，改用下方手动 `.env` 流程；当前源码的修复不会自动更新旧包。
+
 ## 如果准备使用网页界面启动
 
 如果希望通过 Docker 网页管理界面启动容器，而不是让脚本直接启动，请使用下面的手动离线流程。
@@ -144,12 +148,14 @@ vi .env
 在 `.env` 中至少填写下面几项：
 
 ```dotenv
-DIALER_USER=你的校园网账号
-DIALER_PASSWORD=你的校园网密码
+DIALER_USER="你的校园网账号"
+DIALER_PASSWORD="你的校园网密码"
 AUTO_REAUTH_ENABLED=1
 AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4
 AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 ```
+
+双引号内的 `$` 写成 `$$`，反斜线 `\` 写成 `\\`，双引号 `"` 写成 `\"`；空格、单引号和 `#` 保留。例如实际密码 `ab$cd` 写为 `DIALER_PASSWORD="ab$$cd"`。这些规则对应 Compose 环境文件，不把转义后的值重新当作交互输入。
 
 下面是 `.env` 配置界面示例：
 
@@ -191,12 +197,16 @@ HEARTBEAT_SUCCESS
 
 ## 升级部署
 
-升级时，重新按照本教程部署即可：
+升级前先在本机备份旧目录的 `.env` 与 `data`，备份包含凭据/设备状态，不公开分享。新正式版本应保留原配置和设备身份；个人 beta 使用独立配置/data，不复制正式版身份。
+
+升级步骤：
 
 1. 在电脑上下载新的离线镜像包。
 2. 使用 WinSCP 将新的压缩包上传到软路由的 `/root` 目录。
 3. 使用 SSH 进入软路由，解压新的压缩包。
-4. 进入新版本目录，重新执行离线安装或网页界面创建流程。
+4. 停止旧正式容器，将备份的 `.env` 与 `data` 放入新正式版本目录；核对新镜像标签、配置选项与凭据转义，保留旧目录用于回滚。
+5. 若新版本仍使用 `ESurfingDialer` 容器名，先按下方说明移除旧容器，保留旧镜像和数据；再进入新目录执行安装或网页创建流程。
+6. 检查设备身份保留、登录/心跳和健康状态。实际升级/回滚仍需按对应新版本说明验收。
 
 如果提示容器名称已经被使用，说明旧版 `ESurfingDialer` 容器还存在。请在 Docker 网页界面中选中旧容器，点击“停止”或“强制关闭”，再点击“删除”，然后回到新版本目录重新执行命令。
 

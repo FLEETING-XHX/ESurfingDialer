@@ -31,3 +31,7 @@ Desktop.ini
 /ESurfingDialer-Docker/00_最终部署包/Docker_v1.4.0-beta.1/
 
 /ESurfingDialer-Docker/00_最终部署包/Docker_v1.4.0-beta.2/
+
+# Beta packages stay local until the coordinated release is authorized.
+/ESurfingDialer-Docker/00_最终部署包/*beta*/
+/ESurfingDialer-Windows-Client/00_最终安装包/*beta*/
