@@ -1,63 +1,105 @@
-# Changelog
+# Docker 更新日志
 
-# 2026-09-07 v1.3 reauth prediction
+各节按当时版本记录。09-28/29 后续源码改动已进入 10-07 本地 beta3 包；当前待办见[汇总清单](README_BETA.md)。
 
-- Added an automatic reauthentication planner that learns from successful logins and keeps a predicted next reauth time on disk.
-- Added a safety-window scheduler so proactive reauth can be shifted into quiet hours, with a default window of 04:00-06:00.
-- Added `AUTO_REAUTH_ENABLED=1|0` plus safe-window hour controls to the Docker environment and offline installer.
-- Updated the Docker image tag and project version to `v1.3`.
+## 2026-10-08 · 心跳日志精简（后续源码，尚未重包）
 
-## 2026-07-10 v1.23 recovery fix
+- 逐次`HEARTBEAT_ATTEMPT`/`HEARTBEAT_SUCCESS`改为DEBUG；首次周期心跳成功及之后约30分钟一条INFO摘要，计数只来自实际成功心跳。
+- 失败仍立即WARN，亚阈值失败后的首次成功记录`HEARTBEAT_RECOVERED`，不受摘要间隔限制。健康状态仍逐次更新，心跳频率、校验与重连策略不变。
+- 当前源码304项离线认证回归通过，含28项日志摘要/恢复与Client替身检查；不以此替代软路由运行验收。
+- 本节改动尚未进入`beta3-portal-fix-20261008`镜像或现有ZIP。
 
-- Require a successful keep heartbeat before reporting `LOGIN_SUCCESS`, avoiding false authentication when the campus portal still rejects traffic after a login response.
-- Reset the recovery budget after confirmed authentication and clear stale OkHttp connections during session cleanup.
-- Add bounded login confirmation settings: `LOGIN_CONFIRMATION_ATTEMPTS` and `LOGIN_CONFIRMATION_INTERVAL_SECONDS`.
-- Harden the optional OpenWrt watchdog to inspect container thread/health-file liveness instead of restarting on captive-portal redirects or rebooting the router.
-- Use Asia/Shanghai timestamps in the runtime image and persisted log filenames by default.
+## 2026-10-08 · beta3门户修复重包（仅本地测试）
 
-## 2026-07-07 v1.22 offline rebuild
+- 版本仍v1.4.0-beta.3，构建标识`beta3-portal-fix-20261008`；兼容元素属性查询串裸`&`、逐项校验后合并规范化相同auth，保留冲突/坏字段/XML拒绝与安全限制。
+- 增加固定类别XML诊断、处理指令边界保护和同版本强制重建启动参数；原生库、UA、算法和停止注销流程未更换。
+- 276/113/41/18项回归及9组交付检查通过；用户随后完成一次真实登录/首次keep确认并可上网，周期心跳/恢复/长期资源仍待验收。
+- 包摘要与证据见[10-08交付记录](README_BETA.md)。后续文档整理不重建或改写该ZIP。
 
-- Built v1.22 for the portal recovery hardening fix.
-- Added `HEARTBEAT_INTERVAL_MAX_SECONDS=240` so server-provided 480 second heartbeat intervals are capped locally.
-- Updated offline package image tag and installer defaults to `esurfing-dialer:v1.22`.
-## 2026-07-07 portal recovery hardening
+## 2026-10-07 · v1.4.0-beta.3（仅本地测试）
 
-- Treat captive-portal detections as a recovery signal instead of immediately overriding a fresh authenticated session.
-- Added `PORTAL_AUTH_FRESH_SECONDS` and `PORTAL_REAUTH_COOLDOWN_SECONDS` to prevent login-success/reset storms after the campus network forces re-authentication.
-- Increased the default portal detection threshold and health auth window to match the observed heartbeat cadence.
-- Reset the client recovery counter after a successful heartbeat so old recoveries do not accumulate during stable operation.
+- 重建当前 Docker JAR，将 09-28/29 后续修复纳入独立 amd64 离线包。
+- 使用 ESurfingDialer-Beta3 / esurfing-dialer-beta3、独立镜像/目录/.env/data，保留正式版与旧 beta。
+- 安装默认只创建不启动；提供显式启动脚本，在其他约定版本运行时拒绝启动。
+- 附带同一 JAR/运行脚本及可选运行镜像构建文件，不要求离线部署用户联网构建。
+- 实际 Docker 容器、校园网认证和长期稳定性仍待现场验收。
 
-## 2026-07-04 v1.21 offline rebuild
+## 2026-09-29 Docker 后续修复（已进入 beta3）
 
-- Built the amd64 offline Docker image from the current source tree instead of reusing the old `dialer.tar` image as a base.
-- Updated offline package image tag and installer defaults to `esurfing-dialer:v1.21`.
-- Added `Dockerfile.runtime` for release-image builds from the current `shadowJar` output without running Gradle inside Docker.
-- Kept `DIALER_BACKEND=auto`, so x86_64 does not force Dynarmic by default.
-- Kept runtime logs under `data/logs/` with a default 3-day retention window.
+- 保留 09-28 的有界门户结构解析、脱敏诊断与坏缓存刷新修复。
+- 按预期状态/正文判断联网，未知 HTTP 200 继续探测，不直接确认外网畅通。
+- 将待认证请求与网络观测分离，保存门户快照/版本，只确认完成版本；失败保留有界重试，同门户刷新缓存，阶段之间检查停止。
+- 安装器按 Compose 环境文件语法编码美元符号、引号、空白与反斜线；新配置使用受限权限，并说明手动转义。
+- 09-29 当轮仅源码修改、编译与静态检查；10-07 已重建为 beta3，旧 beta2 包保持原样。当前回归与包验证见 beta3 记录；Compose 实际运行和现场认证待验证。
 
-## 2026-06-28 follow-up fix
+## 2026-09-26 · v1.4.0-beta.2（仅本地测试）
 
-- Keep heartbeats running while authenticated even when connectivity probes return temporary request errors.
-- Debounce portal redirects while already authenticated; re-authentication now requires consecutive portal detections.
-- Docker healthcheck now requires `authenticated=true` and a recent login/heartbeat timestamp.
-- Added `PORTAL_DETECTION_THRESHOLD` and `HEALTH_AUTH_MAX_AGE_SECONDS` deployment settings.
+- 监督尊重停止/暂停，增加每容器独占锁、维护暂停与冷却，不执行 docker start/restart 拉起停止容器。
+- 分离探测完成与成功；用单调时钟监督有界认证阶段，对停滞 JNI 进行异常退出。
+- 校验健康时间/期限，统一 JSON 标量编码，原子替换健康、设备和计划状态。
+- 过滤认证寿命样本，修复过去计划、跨午夜窗口、损坏/未来状态及时间回拨。
+- 限制挂载日志单文件/总量，使用常驻日志进程替代逐行 date/tee；降低默认健康写入频率，提供只读资源采样。
+- 提供独立 ESurfingDialer-Beta2 amd64 离线包，保留 beta1/正式部署；LuCI 后续评估。
 
-## Docker fixed build
+## 2026-09-26 · v1.4.0-beta.1（仅本地测试）
 
-- Added persistent device identity in `device-state.json` so MAC address and Client ID no longer change on every restart or re-authentication.
-- Wrapped the client loop with top-level exception recovery to avoid a dead authentication thread while the JVM stays alive.
-- Replaced unsafe heartbeat interval parsing with bounded fallback parsing.
-- Added bounded login retry backoff instead of a fixed 10 minute sleep after failed login.
-- Reset session state after heartbeat failure threshold is reached, then re-enter network detection and login.
-- Added multi-URL captive portal checks with support for 301, 302, 303, 307, and 308 redirects.
-- Added `health.json` reporting and Docker `HEALTHCHECK`.
-- Added Dockerfile, compose file, entrypoint, healthcheck, `.env.example`, and optional OpenWrt watchdog.
-- Fixed Docker run documentation to use `--restart unless-stopped` instead of the invalid `-restart=always`.
+- 校验认证 XML 字段/心跳间隔，转义动态请求字段，限制响应大小。
+- 有限追踪门户跳转并发现 auth/ticket 地址，保留首跳无 IP 的入口。
+- 固定活动会话端点、IP 和设备头；会话使用/释放互斥，清理无效初始化。
+- 增加离线认证回归与独立 ESurfingDialer-Beta amd64 测试包。
+- 保留 Android32 原生库、UA、持久身份、恢复/计划默认值；实际容器/校园网验收待进行。
 
-## Migration from old image
+## 2026-09-07 · v1.3 认证有效期预测
 
-1. Put this directory on the router or build host.
-2. Create `.env` from `.env.example`.
-3. Start with `docker compose up -d --build`.
-4. Keep `./data` mounted permanently. It contains only runtime state, not the password.
-5. To roll back, stop this container and run the old image again. Remove `./data/device-state.json` only if you intentionally want a new client identity.
+- 从成功登录学习间隔，并持久化下次重认证预测。
+- 增加安全窗口调度，默认 04:00–06:00。
+- 增加 `AUTO_REAUTH_ENABLED=1|0` 和窗口小时配置。
+- 镜像标签与版本更新为 v1.3；可信样本等边界由后续 beta2 修复。
+
+## 2026-07-10 · v1.23 恢复修复
+
+- 成功 keep 心跳后才报告 LOGIN_SUCCESS，避免登录响应后仍未放行却误报。
+- 确认认证后重置恢复预算，会话清理时清除失效 OkHttp 连接。
+- 增加登录确认次数与间隔配置。
+- 可选 OpenWrt 监督检查线程/健康新鲜度，不因门户跳转重启或重启路由器。
+- 运行镜像与日志文件默认使用 Asia/Shanghai 时间。
+
+## 2026-07-07 · v1.22 离线重构
+
+- 为门户恢复修复构建 v1.22。
+- 增加 `HEARTBEAT_INTERVAL_MAX_SECONDS=240`，限制服务端过长间隔。
+- 更新镜像标签与安装默认值。
+
+## 2026-07-07 · 门户恢复边界
+
+- 已认证状态下门户探测作为恢复信号，不立即覆盖新鲜会话。
+- 增加 `PORTAL_AUTH_FRESH_SECONDS` 与 `PORTAL_REAUTH_COOLDOWN_SECONDS`，避免恢复风暴。
+- 调整门户次数阈值与健康窗口；成功心跳后重置恢复计数。
+
+## 2026-07-04 · v1.21 离线重构
+
+- 从当时源码构建 amd64 镜像，不复用旧 dialer.tar。
+- 更新镜像/安装版本，增加从现有 shadowJar 构建的 Dockerfile.runtime。
+- 保留后端 auto，x86_64 不强制 Dynarmic；挂载日志默认保留 3 天。
+
+## 2026-06-28 · 后续修复
+
+- 临时探测失败时继续已认证会话心跳；已登录后的门户检测加入防抖。
+- 当时健康检查要求 authenticated 与新鲜登录/心跳时间。
+- 增加门户阈值与健康认证时间窗口配置。
+
+## 基础 Docker 修复历史
+
+- 持久化设备身份，避免重启/重认证改变 MAC 和 Client ID。
+- 认证循环增加异常保护，避免 JVM 存活但认证线程死亡。
+- 心跳间隔增加有界回退；固定 10 分钟等待改为有上限退避。回退解析后来由严格协议校验取代。
+- 心跳达到阈值后清理会话并重新认证。
+- 多地址门户检查、跳转支持、健康报告与 Docker HEALTHCHECK。
+- 增加 Dockerfile、Compose、入口、健康脚本、配置模板与可选 OpenWrt 监督。
+- 修正文档中的无效重启参数，改为 `--restart unless-stopped`。
+
+## 旧镜像迁移说明的适用范围
+
+旧记录采用源码在线构建方式。当前离线部署和源码构建已分别在[中文源码说明](README.md)列出，离线包不运行在线构建。
+
+保留 .env 和 data/设备身份，升级前在本机备份；回滚使用旧镜像与匹配脚本。只有明确需要新设备身份时才删除 device-state.json。beta 用独立目录/配置/身份，不复制正式版状态。
