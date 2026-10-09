@@ -40,12 +40,7 @@ internal static partial class Program
             typeof(MainWindow).GetMethod("CloseDetails_Click", flags)!.Invoke(window, new object[] { window, new System.Windows.RoutedEventArgs() });
             typeof(MainWindow).GetMethod("ShowPage", flags)!.Invoke(window, new object[] { window.FindName("HomePage") });
             ((System.Windows.UIElement)window.FindName("Notice")).Visibility = System.Windows.Visibility.Collapsed;
-            var root = (System.Windows.FrameworkElement)window.Content;
-            root.Measure(new System.Windows.Size(484, 800)); root.Arrange(new System.Windows.Rect(0, 0, 484, 800)); root.UpdateLayout();
-            var image = new RenderTargetBitmap(484, 800, 96, 96, PixelFormats.Pbgra32);
-            image.Render(root);
-            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
-            using (var file = File.Create(Path.Combine(output, "status-paused.png"))) encoder.Save(file);
+            RenderPenPage(window, output, "status-paused");
             SetWindow("_automaticRecoveryExhausted", false);
             SetCore("_recoveryExhausted", true); SetCore("_requested", false);
             Refresh(); Expect("恢复已暂停");

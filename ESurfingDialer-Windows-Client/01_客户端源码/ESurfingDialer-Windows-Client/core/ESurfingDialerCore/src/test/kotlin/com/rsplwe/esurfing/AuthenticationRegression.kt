@@ -240,6 +240,10 @@ fun main() {
     HealthStatus.markLoginSuccess()
     verify(HealthStatus.authenticationFailure == null && !HealthStatus.authenticationBlocked, "Success clears protocol failure")
     count += PortalRegression.run()
+    count += PortalCompatibilityRegression.run()
+    count += PortalXmlRegression.run()
+    count += ClientPortalRegression.run()
+    count += BootstrapCompatibilityRegression.run()
     println("PASS: $count authentication checks")
     kotlin.system.exitProcess(0)
 }

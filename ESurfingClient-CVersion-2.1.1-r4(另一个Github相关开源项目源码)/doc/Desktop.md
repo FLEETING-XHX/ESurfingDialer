@@ -1,5 +1,7 @@
 # Windows, Linux, MacOS 环境使用教程
 
+> 外部参考说明（本仓库整理于 2026-09-30）：本文属于用户提供的 C 项目附件，平台、版本、操作与资源数据均描述原项目；本项目的 Windows/Docker 安装和待办请使用仓库中文文档索引。本次仅补充中文说明/可读标签，命令、许可及实现保持来源内容。
+
 > [!NOTE]
 > 教程版本: v2.1.1-r4
 
@@ -14,7 +16,7 @@
 > [!NOTE]
 > macOS 的权限和隐私管理比较严格
 > 
-> Desktop 等目录不允许程序随意读取文件
+> 桌面等目录不允许程序随意读取文件
 > 
 > 建议是把程序放进 `/usr/local/bin` 里面去使用
 
@@ -23,7 +25,7 @@
 ### 1. Windows 双击直接运行, 或者在终端执行如下指令
 
 ```shell
-# Windows PowerShell or CMD (无特别权限要求)
+# Windows PowerShell 或命令提示符 (无特别权限要求)
 .\ESurfingClient-*-windows-*.exe
 ```
 
@@ -68,7 +70,7 @@ sudo ./ESurfingClient-*-darwin-*
 ### 1. Windows 在终端执行
 
 ```shell
-# Windows PowerShell or CMD
+# Windows PowerShell 或命令提示符
 # 安装服务 (需要管理员权限)
 .\ESurfingClient-*-windows-*.exe -i
 # 卸载服务 (需要管理员权限)
@@ -197,7 +199,7 @@ sudo launchctl list | grep main
 - password(字符串值): 密码
 - channel(整形值, 有效范围 1-5): 认证通道
 - mark(字符串值): 标记值 (高级功能)
-- time_windows(字符串值): 时间控制, 可选, 数组; 每项格式 `{ "start": "mon 08:13", "end": "mon 23:57" }`, 支持跨天/跨周, 留空表示不限; 按系统本地时间判断
+- time_windows(数组): 时间控制, 可选, 数组; 每项格式 `{ "start": "mon 08:13", "end": "mon 23:57" }`, 支持跨天/跨周, 留空表示不限; 按系统本地时间判断
 
 > [!NOTE]
 > 改完配置文件要重启程序 (或重启服务) 才会生效; 网页界面上的设置页也能改上面这些参数, 改完点"保存"写进配置, 账号之类的点"保存并应用"即可

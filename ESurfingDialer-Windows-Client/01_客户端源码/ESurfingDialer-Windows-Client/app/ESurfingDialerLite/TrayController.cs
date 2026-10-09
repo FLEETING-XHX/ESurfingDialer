@@ -8,6 +8,7 @@ public sealed class TrayController : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private readonly Dictionary<TrayStatus, Icon> _icons = new();
+    private TrayStatus _lastStatus = TrayStatus.Idle;
 
     public event EventHandler? ShowRequested;
     public event EventHandler? ExitRequested;
@@ -28,11 +29,14 @@ public sealed class TrayController : IDisposable
         _notifyIcon.DoubleClick += (_, _) => ShowRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    public void SetStatus(TrayStatus status, string tooltip)
+    public void SetStatus(TrayStatus status, string tooltip, bool showBackgroundTip = false)
     {
         var icon = GetIcon(status);
         _notifyIcon.Icon = icon;
         _notifyIcon.Text = tooltip.Length > 63 ? tooltip[..63] : tooltip;
+        if (showBackgroundTip && status != _lastStatus && status is TrayStatus.Connected or TrayStatus.Disconnected or TrayStatus.Error)
+            _notifyIcon.ShowBalloonTip(3000, "天翼校园", tooltip, status == TrayStatus.Error ? ToolTipIcon.Warning : ToolTipIcon.Info);
+        _lastStatus = status;
     }
 
     private Icon GetIcon(TrayStatus status)

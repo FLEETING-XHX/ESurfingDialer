@@ -1,5 +1,7 @@
 # OpenWRT 系统目标平台自查教程
 
+> 外部参考说明（本仓库整理于 2026-09-30）：本文属于用户提供的 C 项目附件，平台、版本、操作与资源数据均描述原项目；本项目的 Windows/Docker 安装和待办请使用仓库中文文档索引。本次仅补充中文说明/可读标签，命令、许可及实现保持来源内容。
+
 > [!NOTE]
 > 教程版本: v2.0.8-r2
 
@@ -9,7 +11,7 @@
 
 ### 如下图红框所示
 
-<img alt="Please refresh" width="75%" src="../image/targets/01.png"/>
+<img alt="原项目截图（未显示时请刷新）" width="75%" src="../image/targets/01.png"/>
 
 **一个架构实际上包含多个目标平台**
 
@@ -29,7 +31,7 @@ ramips/rt305x
 
 <details>
 <summary>
-All
+全部目标平台
 </summary>
 
 **这个是 LuCI 包专属, 表示所有目标平台都能装**

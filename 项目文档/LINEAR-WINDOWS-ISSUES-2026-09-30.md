@@ -1,5 +1,7 @@
 # Linear 同步与完成条件核查
 
+以下保留10-08打包前的远端核查快照。之后本地统一门禁与UA2104修复交付已完成，10-09用户登录、首次确认心跳和外网已通过，恢复/长期仍待验收；远端状态未在本轮更新，最新本地进度以[总记录](修复与优化总记录.md#windows)为准。
+
 首次同步：2026-09-30；最近核查：2026-10-08。项目：[ESurfingDialer](https://linear.app/fleeting-xhx/project/esurfingdialer-0181c615ecee)，团队FLEETING。
 
 ## 本次结果
@@ -34,7 +36,7 @@ FLE-11要求的是统一可重复、失败停止交付的流程。09-30的188项
 
 ## 首次同步事实与依赖
 
-09-30用户只批准7条待处理、4条储备；OFF-01至06、PKG-STARTUP-01和WOPT-02这8条已完成草稿没有创建为Issue。范围记录见[首次同步记录](LINEAR-WINDOWS-ISSUE-PLAN-2026-09-30.md)，已完成原因/验证见[六项修复](WINDOWS-OFFLINE-FIXES-2026-09-30.md)和[本地交付](WINDOWS-LOCAL-BETA-2026-09-30.md)。
+09-30用户只批准7条待处理、4条储备；OFF-01至06、PKG-STARTUP-01和WOPT-02这8条已完成草稿没有创建为Issue。范围记录见[首次同步记录](修复与优化总记录.md#windows)，已完成原因/验证见[六项修复](修复与优化总记录.md#windows)和[本地交付](修复与优化总记录.md#windows)。
 
 - FLE-6、10依赖FLE-5；FLE-8依赖FLE-5、6、7。
 - FLE-9、12、14依赖FLE-8；FLE-13、15依赖FLE-8和10。

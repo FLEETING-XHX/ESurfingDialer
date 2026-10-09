@@ -1,5 +1,7 @@
 # ESurfingClient-CVersion > [最新版本](https://github.com/BadGhost520/ESurfingClient-CVersion/releases/latest/)
 
+> 外部参考说明（本仓库整理于 2026-09-30）：本文属于用户提供的 C 项目附件，平台、版本、操作与资源数据均描述原项目；本项目的 Windows/Docker 安装和待办请使用仓库中文文档索引。本次仅补充中文说明/可读标签，命令、许可及实现保持来源内容。
+
 **根据 [Rsplwe](https://github.com/Rsplwe) 佬的 Kotlin 源码编写的纯 C 版本的 `广东` 天翼校园认证客户端** 👍
 
 **使用了 [cJSON](https://github.com/DaveGamble/cJSON), [mongoose](https://github.com/cesanta/mongoose), [curl](https://github.com/curl/curl), [7z-lzma](https://github.com/ip7z/7zip) 开源库**
@@ -29,18 +31,18 @@
 
 ## 附上作者自用 K2P 路由器安装本包之后的资源占用情况⬇ (图中还安装了 MWAN3 插件)
 
-![Please refresh](image/1.png) ![Please refresh](image/2.png) ![Please refresh](image/3.png)
+![原项目截图（未显示时请刷新）](image/1.png) ![原项目截图（未显示时请刷新）](image/2.png) ![原项目截图（未显示时请刷新）](image/3.png)
 
 > [!TIP]
 > ~~经实测, 运行十天后运行内存占用仅增加 300 kB 左右~~
 >
 > 初运行 (单进程)
 >
-> VmPeak: 912 kB, VmSize: 800 kB, VmHWM: 536 kB, VmRSS: 536 kB
+> 原项目虚拟内存峰值/当前值、驻留内存峰值/当前值：VmPeak: 912 kB, VmSize: 800 kB, VmHWM: 536 kB, VmRSS: 536 kB
 >
 > ~~十天后~~(旧数据, 新数据待测)
 >
-> ~~VmHWM: 3108 kB, VmRSS: 3048 kB~~
+> 旧驻留内存数据：~~VmHWM: 3108 kB, VmRSS: 3048 kB~~
 > 
 > 4 级信息级日志文件轮换后占用 111 kB 左右
 
@@ -60,13 +62,13 @@
 | Android | x86_64/arm64-v8a/armeabi-v7a  | 便携二进制文件 |         Android 7         |       Android 10        |
 |  macOS  |            x86_64             | 便携二进制文件 |         macOS 12          |        macOS 13         |
 |  macOS  |            aarch64            | 便携二进制文件 |         macOS 13          |        macOS 14         |
-| OpenWRT | [All](doc/OpenWRT_targets.md) |    opkg/apk    | OpenWRT 15.05/25.12.0-rc1 | OpenWRT 19.07.0/25.12.0 |
+| OpenWRT | [全部架构](doc/OpenWRT_targets.md) |    opkg/apk    | OpenWRT 15.05/25.12.0-rc1 | OpenWRT 19.07.0/25.12.0 |
 
-### OpenWRT LuCI 插件包
+### OpenWrt LuCI 编译说明 插件包
 
 |  系统   |             架构              | 包管理器 |     理论最低支持版本      |        推荐版本         |
 |:-------:|:-----------------------------:|:--------:|:-------------------------:|:-----------------------:|
-| OpenWRT | [All](doc/OpenWRT_targets.md) | opkg/apk | OpenWRT 15.05/25.12.0-rc1 | OpenWRT 19.07.0/25.12.0 |
+| OpenWRT | [全部架构](doc/OpenWRT_targets.md) | opkg/apk | OpenWRT 15.05/25.12.0-rc1 | OpenWRT 19.07.0/25.12.0 |
 
 > [!TIP]
 > 如果有其它兼容需求, 可以提交一个 issue, 会尝试进行兼容
@@ -87,7 +89,7 @@
 
 [**OpenWRT 系统目标平台自查教程**](doc/OpenWRT_targets.md)
 
-[**Q&A**](doc/Q&A.md)
+[**常见问题**](doc/Q&A.md)
 
 # 其他
 
@@ -106,7 +108,7 @@
 
 觉得好的话可以点击这个[神秘小链接](https://ifdian.net/a/badghost)或者下边的微信赞赏码给偶打点钱喵, 谢谢泥喵~
 
-<img alt="Please refresh" height="256" src="image/4.png" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/4.png" width="256"/>
 
 ### 赞助者 ❤
 
@@ -114,19 +116,19 @@
 
 #### 爱发电
 
-<img alt="Please refresh" src="image/fund/aifadian/1.png"/>
-<img alt="Please refresh" src="image/fund/aifadian/2.png"/>
-<img alt="Please refresh" src="image/fund/aifadian/3.png"/>
+<img alt="原项目截图（未显示时请刷新）" src="image/fund/aifadian/1.png"/>
+<img alt="原项目截图（未显示时请刷新）" src="image/fund/aifadian/2.png"/>
+<img alt="原项目截图（未显示时请刷新）" src="image/fund/aifadian/3.png"/>
 
 #### 微信
 
-<img alt="Please refresh" height="256" src="image/fund/wechat/1.jpg" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/2.jpg" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/3.jpg" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/4.png" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/5.png" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/6.png" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/7.jpg" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/8.jpg" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/9.png" width="256"/>
-<img alt="Please refresh" height="256" src="image/fund/wechat/10.png" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/1.jpg" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/2.jpg" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/3.jpg" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/4.png" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/5.png" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/6.png" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/7.jpg" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/8.jpg" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/9.png" width="256"/>
+<img alt="原项目截图（未显示时请刷新）" height="256" src="image/fund/wechat/10.png" width="256"/>

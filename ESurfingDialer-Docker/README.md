@@ -42,7 +42,7 @@ sh install.sh
 
 ## 开发入口
 
-后续计划见[中文文档索引](../项目文档/README.md)、[待优化清单](../项目文档/PENDING-OPTIMIZATIONS.md) 和 [未来开发方向](../项目文档/ROADMAP.md)。Windows 的认证修复有独立计划，不据此推断 Docker 需要同样的协议变更。
+修复、优化和待办统一见[总记录](../项目文档/修复与优化总记录.md#docker)；各Markdown的用途见[文档清单](../项目文档/README.md)。
 
 ## 致谢
 

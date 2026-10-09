@@ -59,7 +59,7 @@ object PortalRegression {
         val absent = failure("PORTAL_AUTH_URL_MISSING") { PortalConfiguration.parse(missing) }
         verify("missing counts attached", absent.portalDiagnostics?.authFields == 0 && absent.portalDiagnostics?.ticketFields == 1)
         failure("PORTAL_TICKET_URL_MISSING") { PortalConfiguration.parse(page(fields.replace("ticket-url", "other-url"))) }
-        failure("PORTAL_AUTH_URL_DUPLICATE") { PortalConfiguration.parse(page("<auth-url>$auth</auth-url>$fields")) }
+        parses("repeated equal auth addresses remain unambiguous", page("<auth-url>$auth</auth-url>$fields"))
         failure("PORTAL_TICKET_URL_DUPLICATE") { PortalConfiguration.parse(page("$fields<ticket-url><![CDATA[$ticket]]></ticket-url>")) }
         failure("PORTAL_AUTH_URL_EMPTY") { PortalConfiguration.parse(page(fields.replace("<![CDATA[$auth]]>", " "))) }
         failure("PORTAL_TICKET_URL_EMPTY") { PortalConfiguration.parse(page(fields.replace("<![CDATA[$ticket]]>", ""))) }

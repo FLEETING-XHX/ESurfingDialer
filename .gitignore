@@ -9,6 +9,7 @@
 
 # Release packages are uploaded to GitHub Releases
 *.zip
+!/项目文档/归档/历史Markdown_20261008.zip
 *.tar
 *.tar.gz
 **/*.exe

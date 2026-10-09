@@ -1,4 +1,4 @@
-# ESurfingDialer Windows Client（天翼校园客户端）
+# ESurfingDialer Windows 客户端（天翼校园）
 
 面向 Windows 桌面使用的 ESurfingDialer 客户端整理版。
 
@@ -10,6 +10,8 @@
 ## 下载
 
 - 最新安装包：请前往统一仓库的 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 页面。
+
+当前已发布Windows版本仍为v2.3beta；最新本地[beta3 UA2104修复包](../项目文档/WINDOWS-BOOTSTRAP-UA-FIX-2026-10-08.md)保留既有修复并修正初始化空响应通道，327/63/189项及实际EXE就绪/清理通过，原ARM64库无账号真实初始化/票据响应解析通过，未上传或发布。10-09真实登录、首次确认心跳及外网访问已通过；连续心跳、恢复和长期稳定待验。安装与账户/托盘操作见[中文使用说明](../项目文档/WINDOWS-USER-GUIDE.md)。
 
 ## 适用场景
 
@@ -25,7 +27,7 @@
 
 ## 开发入口
 
-后续计划和修复记录放在[项目文档](../项目文档/)中，可以查看[未来开发方向](../项目文档/ROADMAP.md)、[认证修复计划](../项目文档/AUTH-REPAIR-PLAN.md) 和 [v2.3beta 测试说明](../项目文档/V2.3BETA-RELEASE.md)。
+修复、优化和待办统一见[总记录](../项目文档/修复与优化总记录.md#windows)；各Markdown的用途见[文档清单](../项目文档/README.md)。
 
 ## 致谢
 

@@ -16,15 +16,34 @@ dotnet run --project tests/ClientRegression/ClientRegression.csproj --no-restore
 
 --core 需要已构建的 core/client.jar 与 Java；本地 HTTP 服务替代联网探测，不进行校园网登录。--stress 使用 30 次含恢复的预热、200 次启停及 40 次恢复、2000 条界面事件、200 次配置保存，并按阶段采样测试进程资源。
 
+## Pen 界面与窗口缩放检查
+
+只核对界面、内嵌字体、设置跳转和实际窗口尺寸，不启动认证核心：
+
+```powershell
+dotnet build tests/ClientRegression/ClientRegression.csproj --no-restore -c Release
+dotnet run --project tests/ClientRegression/ClientRegression.csproj --no-build --no-restore -c Release -- artifacts/pen-ui-check-new --ui-only
+```
+
+输出目录必须是全新目录。使用独立账户夹具和浏览器替身，检查449×912物理尺寸、拖动/最小尺寸/后台恢复、最大化禁用、无标题栏按钮、导航固定、上下渐隐与键盘焦点可达、后台提示保存、账户单层遮罩及圆角像素、内嵌字体；不写用户配置或系统自启。当前123项UI检查通过。`continuous-resize.json`记录八边/角640次连续尺寸更新，核对增长/缩小方向、比例及拖动期间无原生圆角重设。`compact-*.png`是真实窗口客户区，含设置入口获得焦点后的无外框截图；`pen-*.png`是449×912稿件对照。只有`pen-home.png`暂用原稿曲线和账户文字，截图后立即恢复，不用于产品运行。
+
+`window-metrics.json` 保存实际 HWND 外框、客户区、DPI 和画布尺寸。最新实机为 120 DPI（125%）；其他缩放比例的尺寸运算有离线检查，跨 DPI 显示器的实际拖动仍需验收。
+
+字体维护使用现有 Python 和 fontTools：`python scripts/Update-UiFonts.py --source 本地NotoSansSC可变字体路径`。仅在新目录生成待审阅字体，默认 `artifacts/fonts-rebuild`，不会覆盖正式字体、联网下载或自动安装依赖；参数见 `--help`。正式采用前核对覆盖、许可和 WPF 实际字重。
+
 ## 发布 EXE 启动检查
 
 上面的回归直接创建 MainWindow，不会执行 App.OnStartup。打包后还需检查实际程序入口，防止窗口回归通过但 EXE 启动失败：
 
 ```powershell
-./tests/ClientRegression/Test-PublishedStartup.ps1 -PublishedDirectory ./dist/v2.3beta.2/ESurfingDialerLite -OutputDirectory ./artifacts/published-startup-beta2
+./tests/ClientRegression/Test-PublishedStartup.ps1 -PublishedDirectory ./dist/v2.3beta.3/ESurfingDialerLite -OutputDirectory ./artifacts/published-startup-beta3
 ```
 
-脚本使用独立空账户配置、禁止自动连接，启动包内 EXE，检查进程存活、界面消息循环、启动日志、配置未改变及没有核心健康文件，并记录版本、DLL 摘要和 .NET 宿主路径。最后仅结束本轮创建的进程；不测试正常退出、升级/卸载或真实认证。输出目录必须是新目录，失败不能读取旧通过结果。
+脚本使用独立空账户配置、禁止自动连接，启动包内 EXE，严格要求消息循环就绪、本次PID的WPF主窗口存在且响应消息；观察后检查启动日志、配置未改变及没有核心健康文件。结束本轮进程树、确认退出、释放句柄并二次核对配置后才写通过；失败记录Passed=false且退出非零。输出目录必须是新目录。独立的 `Test-StartupGateRegression.ps1 -OutputDirectory 新目录` 使用假进程验证就绪/清理失败边界，不启动真实进程。
+
+本地beta统一执行 `pwsh -NoProfile -File scripts/Build-LocalBeta.ps1 -Offline`。它使用产品发布文件的隔离副本、匹配的自包含回归宿主和内置Java执行 `--core --stress`，并核对产品DLL/JAR/Java/coreclr摘要；实际产品EXE的宿主跟踪确认包内.NET加载。部分回归夹具仍经PATH的dotnet启动，不把它等同所有子进程环境都已单独跟踪；不测试正常退出、安装升级/卸载或真实认证。
+
+10-08后续：UI检查关闭WPF后立即恢复原同步上下文，再执行真实核心进程检查；新增Task.Yield续体可运行检查，避免退出事件被投递到已关闭Dispatcher而使崩溃恢复偶发失败。仍使用原12秒恢复等待与原断言，不延长超时或跳过检查。
 
 ## 结果与失败处理
 

@@ -8,11 +8,13 @@ import okhttp3.OkHttpClient
 import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.xml.sax.InputSource
+import org.xml.sax.SAXException
 import org.xml.sax.SAXParseException
 import org.xml.sax.helpers.DefaultHandler
 import java.io.StringReader
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.parsers.FactoryConfigurationError
 
 data class AuthenticationEndpoints(val authUrl: String, val ticketUrl: String, val userIp: String,
                                    val acIp: String, val source: String)
@@ -49,7 +51,9 @@ object PortalConfiguration {
             val start = body.indexOf(START) + START.length
             val end = body.indexOf(END, start)
             if (end < 0) throw AuthenticationFailure("PORTAL_CONFIG_TRUNCATED", true)
-            val root = configXml(body.substring(start, end))
+            val config = body.substring(start, end)
+            diagnostics = diagnostics.copy(configChars = config.length)
+            val root = configXml(config)
             val authFields = root.getElementsByTagName("auth-url")
             val ticketFields = root.getElementsByTagName("ticket-url")
             diagnostics = diagnostics.copy(authFields = authFields.length, ticketFields = ticketFields.length)
@@ -59,17 +63,28 @@ object PortalConfiguration {
                 if (fields.length > 1) throw AuthenticationFailure("${code}_DUPLICATE", true)
                 return fields.item(0) as Element
             }
-            val authField = field("auth-url", "PORTAL_AUTH_URL")
+            if (authFields.length == 0) throw AuthenticationFailure("PORTAL_AUTH_URL_MISSING", true)
+            // Validate every occurrence before accepting one unambiguous request URL.
+            val authUrls = (0 until authFields.length).map { index ->
+                address(fieldText(authFields.item(index) as Element, "PORTAL_AUTH_URL"), "PORTAL_AUTH_URL_INVALID").also {
+                    if (!it.encodedPath.endsWith("/auth.cgi")) throw AuthenticationFailure("PORTAL_ENDPOINT_PATH_INVALID", true)
+                }
+            }.distinctBy { it.toString() }
+            if (authUrls.size > 1) throw AuthenticationFailure("PORTAL_AUTH_URL_DUPLICATE", true)
             val ticketField = field("ticket-url", "PORTAL_TICKET_URL")
-            val auth = address(fieldText(authField, "PORTAL_AUTH_URL"), "PORTAL_AUTH_URL_INVALID")
+            val auth = authUrls.single()
             val ticket = address(fieldText(ticketField, "PORTAL_TICKET_URL"), "PORTAL_TICKET_URL_INVALID")
-            if (!auth.encodedPath.endsWith("/auth.cgi") || !ticket.encodedPath.endsWith("/ticket.cgi"))
+            if (!ticket.encodedPath.endsWith("/ticket.cgi"))
                 throw AuthenticationFailure("PORTAL_ENDPOINT_PATH_INVALID", true)
             fun ip(name: String): String = ticket.queryParameterValues(name).singleOrNull()?.takeIf(::isIpv4)
                 ?: throw AuthenticationFailure("PORTAL_IP_INVALID", true)
             return AuthenticationEndpoints(auth.toString(), ticket.toString(), ip("wlanuserip"), ip("wlanacip"), "portal")
         } catch (e: AuthenticationFailure) {
-            throw AuthenticationFailure(e.code, e.deterministic, diagnostics)
+            val xml = e.portalDiagnostics
+            throw AuthenticationFailure(e.code, e.deterministic, diagnostics.copy(
+                xmlStage = xml?.xmlStage ?: PortalXmlStage.NONE,
+                xmlLine = xml?.xmlLine ?: -1, xmlColumn = xml?.xmlColumn ?: -1,
+                xmlIssue = xml?.xmlIssue ?: PortalXmlIssue.NONE, xmlContext = xml?.xmlContext ?: PortalXmlContext.UNKNOWN))
         }
     }
 
@@ -88,7 +103,9 @@ object PortalConfiguration {
     }
 
     private fun configXml(config: String): Element {
-        try {
+        fun setupFailure() = AuthenticationFailure("PORTAL_XML_PARSER_SETUP_FAILED", true,
+            PortalDiagnostics(xmlStage = PortalXmlStage.PARSER_SETUP))
+        val builder = try {
             val factory = DocumentBuilderFactory.newInstance().apply {
                 setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
                 setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
@@ -100,23 +117,33 @@ object PortalConfiguration {
                 isXIncludeAware = false
                 isExpandEntityReferences = false
             }
-            val builder = factory.newDocumentBuilder()
-            builder.setErrorHandler(object : DefaultHandler() {
+            factory.newDocumentBuilder().apply { setErrorHandler(object : DefaultHandler() {
                 override fun error(e: SAXParseException) { throw e }
                 override fun fatalError(e: SAXParseException) { throw e }
-            })
-            // A portal comment can contain an XML fragment or one declared document.
-            val fragment = config.trim().removePrefix("\uFEFF").trimStart()
-                .replaceFirst(Regex("^<\\?xml\\s[^?]*\\?>"), "")
-            val xml = "<portal-config>${escapeQuerySeparators(fragment)}</portal-config>"
+            }) }
+        } catch (_: Exception) { throw setupFailure() }
+        catch (_: FactoryConfigurationError) { throw setupFailure() }
+        // A portal comment can contain an XML fragment or one declared document.
+        val fragment = config.trim().removePrefix("\uFEFF").trimStart()
+            .replaceFirst(Regex("^<\\?xml\\s[^?]*\\?>"), "")
+        val xml = "<portal-config>${escapeQuerySeparators(fragment)}</portal-config>"
+        try {
             return builder.parse(InputSource(StringReader(xml))).documentElement
+        } catch (e: SAXParseException) {
+            // Positions are safe; parser messages can contain URLs, attributes or field values.
+            throw AuthenticationFailure("PORTAL_CONFIG_XML_INVALID", true,
+                PortalDiagnostics(xmlStage = PortalXmlStage.XML_PARSE, xmlLine = e.lineNumber, xmlColumn = e.columnNumber,
+                    xmlIssue = PortalXmlIssue.fromMessage(e.message), xmlContext = PortalXmlDetails.context(xml, e.lineNumber, e.columnNumber)))
+        } catch (e: SAXException) {
+            throw AuthenticationFailure("PORTAL_CONFIG_XML_INVALID", true,
+                PortalDiagnostics(xmlStage = PortalXmlStage.XML_PARSE, xmlIssue = PortalXmlIssue.fromMessage(e.message)))
         } catch (_: Exception) {
-            // XML parser messages can contain URLs or field values; never expose the cause.
-            throw AuthenticationFailure("PORTAL_CONFIG_XML_INVALID", true)
+            throw AuthenticationFailure("PORTAL_XML_PARSER_FAILED", true,
+                PortalDiagnostics(xmlStage = PortalXmlStage.XML_PARSE))
         }
     }
 
-    /** Preserve legacy plain URLs with &key=value. CDATA, markup and entities stay untouched. */
+    /** Preserve legacy &key=value in text and quoted attributes; entities and opaque markup stay intact. */
     private fun escapeQuerySeparators(xml: String): String = buildString {
         var at = 0
         val separator = Regex("&(?=[A-Za-z_][A-Za-z0-9_.~-]*=)")
@@ -124,6 +151,7 @@ object PortalConfiguration {
             val end = when {
                 xml.startsWith("<![CDATA[", at) -> xml.indexOf("]]>", at + 9).let { if (it < 0) xml.length else it + 3 }
                 xml.startsWith("<!--", at) -> xml.indexOf("-->", at + 4).let { if (it < 0) xml.length else it + 3 }
+                xml.startsWith("<?", at) -> xml.indexOf("?>", at + 2).let { if (it < 0) xml.length else it + 2 }
                 xml[at] == '<' -> {
                     var cursor = at + 1
                     var quote: Char? = null
@@ -138,8 +166,28 @@ object PortalConfiguration {
                 else -> xml.indexOf('<', at).let { if (it < 0) xml.length else it }
             }
             val segment = xml.substring(at, end)
-            append(if (xml[at] == '<') segment else separator.replace(segment, "&amp;"))
+            append(when {
+                xml[at] != '<' -> separator.replace(segment, "&amp;")
+                segment.startsWith("<!") || segment.startsWith("<?") || segment.startsWith("</") -> segment
+                else -> escapeAttributeQuerySeparators(segment, separator)
+            })
             at = end
+        }
+    }
+
+    private fun escapeAttributeQuerySeparators(markup: String, separator: Regex): String = buildString {
+        var at = 0
+        while (at < markup.length) {
+            var quoteAt = at
+            while (quoteAt < markup.length && markup[quoteAt] != '\'' && markup[quoteAt] != '"') quoteAt++
+            if (quoteAt == markup.length) { append(markup, at, markup.length); break }
+            val end = markup.indexOf(markup[quoteAt], quoteAt + 1)
+            // Do not repair an unterminated attribute; the XML parser must reject it.
+            if (end < 0) { append(markup, at, markup.length); break }
+            append(markup, at, quoteAt + 1)
+            append(separator.replace(markup.substring(quoteAt + 1, end), "&amp;"))
+            append(markup[end])
+            at = end + 1
         }
     }
 

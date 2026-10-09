@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _speedTimer = new();
     private readonly DispatcherTimer _noticeTimer = new();
     private readonly NetworkSpeedSampler _speedSampler = new();
+    private readonly Action<ProcessStartInfo>? _browserLauncher;
     private readonly ObservableCollection<SummaryEntry> _summaries = [];
     private ClientConfig _config = new();
     private string _currentStatus = "";
@@ -46,9 +47,14 @@ public partial class MainWindow : Window
 
     public MainWindow() : this(false) { }
 
-    public MainWindow(bool previewMode)
+    public MainWindow(bool previewMode) : this(previewMode, null) { }
+
+    public MainWindow(bool previewMode, Action<ProcessStartInfo>? browserLauncher)
     {
+        _browserLauncher = browserLauncher;
         InitializeComponent();
+        WindowSizing.Attach(this);
+        DesignRoot.SizeChanged += (_, _) => UpdateAccountSheetLayout();
         Directory.CreateDirectory(AppPaths.LogsDirectory);
         _config = _configStore.Load();
         ApplySettings();
@@ -86,12 +92,24 @@ public partial class MainWindow : Window
 
     private Brush Color(string key) => (Brush)FindResource(key);
 
+    private void UpdateAccountSheetLayout()
+    {
+        if (AccountSheet is null || AccountEditorScroll is null) return;
+        PageClip.Rect = new Rect(0, 0, 410, DesignRoot.ActualHeight > 0 ? DesignRoot.ActualHeight : DesignRoot.Height);
+        AccountSheet.Height = Math.Max(200, DesignRoot.Height - AccountSheet.Margin.Top);
+        // The approved sheet keeps its design position; only its editable content scrolls.
+        AccountEditorScroll.Height = Math.Max(200,
+            Math.Min(AccountSheet.Height, DesignRoot.Height - AccountSheet.Margin.Top) - 138);
+    }
+
     private void ApplySettings()
     {
         AutoStartCheckBox.IsChecked = _config.AutoStart;
         StartMinimizedCheckBox.IsChecked = _config.StartMinimized;
         AutoConnectCheckBox.IsChecked = _config.AutoConnect;
         EnhancedConnectionCheckBox.IsChecked = _config.EnhancedConnection;
+        BackgroundTipsCheckBox.IsChecked = _config.BackgroundTips;
+        (System.Windows.Application.Current as App)?.SetBackgroundTipsEnabled(_config.BackgroundTips);
         MinimizeSettingRow.Visibility = _config.AutoStart ? Visibility.Visible : Visibility.Collapsed;
         _dialer.EnhancedConnection = _config.EnhancedConnection;
         _healthTimer.Interval = EnhancedConnectionPolicy.HealthCheckInterval(_config.EnhancedConnection);
@@ -105,6 +123,7 @@ public partial class MainWindow : Window
         _config.StartMinimized = StartMinimizedCheckBox.IsChecked == true;
         _config.AutoConnect = AutoConnectCheckBox.IsChecked == true;
         _config.EnhancedConnection = EnhancedConnectionCheckBox.IsChecked == true;
+        _config.BackgroundTips = BackgroundTipsCheckBox.IsChecked == true;
         try
         {
             if (previousAutoStart != _config.AutoStart) StartupManager.SetEnabled(_config.AutoStart);
@@ -336,7 +355,6 @@ public partial class MainWindow : Window
         CampusStatusText.Text = HomeStatusText.Text = status;
         SpeedStatusText.Text = status == "已连接" ? "已连接" : status is "连接中" or "正在恢复" ? status : "等待连接";
         var brush = Color(presentation.Tone);
-        BrandSignalBar1.Background = BrandSignalBar2.Background = BrandSignalBar3.Background = brush;
         CampusStatusDot.Fill = brush;
         SignalBar1.Background = SignalBar2.Background = SignalBar3.Background = brush;
         (System.Windows.Application.Current as App)?.SetTrayStatus(presentation.Tray, "天翼校园：" + status + "。" + presentation.Detail);
@@ -412,7 +430,7 @@ public partial class MainWindow : Window
         MainContent.IsEnabled = false;
         AddAccountButton.Focus();
         if (SystemParameters.ClientAreaAnimation && Mouse.LeftButton == MouseButtonState.Released)
-            SheetTranslation.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(530, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            SheetTranslation.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(AccountSheet.Height, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
     }
 
     private void RefreshAccounts()
@@ -438,6 +456,7 @@ public partial class MainWindow : Window
     private void ShowAccountList()
     {
         AccountEditor.Visibility = Visibility.Collapsed;
+        AccountHint.Visibility = Visibility.Visible;
         AccountListScroll.Visibility = AccountActions.Visibility = Visibility.Visible;
         CancelAccountEditButton.Visibility = Visibility.Collapsed;
         SheetTitle.Text = "账户管理";
@@ -463,6 +482,7 @@ public partial class MainWindow : Window
         AccountErrorText.Text = account != null && !decrypted.Success ? decrypted.ErrorMessage : "";
         AccountListScroll.Visibility = AccountActions.Visibility = Visibility.Collapsed;
         AccountEditor.Visibility = CancelAccountEditButton.Visibility = Visibility.Visible;
+        AccountHint.Visibility = Visibility.Collapsed;
         UserTextBox.Focus();
     }
     private void CancelAccountEdit_Click(object sender, RoutedEventArgs e) => ShowAccountList();
@@ -526,7 +546,48 @@ public partial class MainWindow : Window
         HomeNavButton.Foreground = Color(page == HomePage ? "Coral" : "Muted");
         LogsNavButton.Foreground = Color(page == LogsPage ? "Coral" : "Muted");
         SettingsNavButton.Foreground = Color(page == SettingsPage ? "Coral" : "Muted");
+        HomeNavButton.SetValue(System.Windows.Automation.AutomationProperties.ItemStatusProperty, page == HomePage ? "已选中" : "未选中");
+        LogsNavButton.SetValue(System.Windows.Automation.AutomationProperties.ItemStatusProperty, page == LogsPage ? "已选中" : "未选中");
+        SettingsNavButton.SetValue(System.Windows.Automation.AutomationProperties.ItemStatusProperty, page == SettingsPage ? "已选中" : "未选中");
+        UpdateScrollVisuals();
         UpdateSpeedSampling();
+    }
+
+    private void PageScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e) => UpdateScrollVisuals();
+
+    private void UpdateScrollVisuals()
+    {
+        if (TopContentFade == null || SettingsScrollThumb == null || SettingsPage == null || LogsPage == null) return;
+        var scroll = SettingsPage.Visibility == Visibility.Visible ? SettingsScrollViewer
+            : LogsPage.Visibility == Visibility.Visible ? LogsScrollViewer : null;
+        TopContentFade.Visibility = scroll is { VerticalOffset: > 0.5 } ? Visibility.Visible : Visibility.Collapsed;
+        SettingsScrollThumb.Visibility = SettingsPage.Visibility == Visibility.Visible && SettingsScrollViewer.ScrollableHeight > 0.5
+            ? Visibility.Visible : Visibility.Collapsed;
+        var progress = SettingsScrollViewer.ScrollableHeight > 0 ? SettingsScrollViewer.VerticalOffset / SettingsScrollViewer.ScrollableHeight : 0;
+        Canvas.SetTop(SettingsScrollThumb, (111 + 570 * Math.Clamp(progress, 0, 1)) * 410 / 449);
+    }
+
+    private void SettingsScrollViewer_PreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (e.NewFocus is not FrameworkElement target || !target.IsDescendantOf(SettingsScrollViewer)) return;
+        var bounds = target.TransformToAncestor(DesignRoot).TransformBounds(new Rect(target.RenderSize));
+        var top = 164d * 410 / 449;
+        var bottom = 710d * 410 / 449;
+        if (bounds.Bottom > bottom)
+            SettingsScrollViewer.ScrollToVerticalOffset(SettingsScrollViewer.VerticalOffset + bounds.Bottom - bottom + 8);
+        else if (bounds.Top < top)
+            SettingsScrollViewer.ScrollToVerticalOffset(SettingsScrollViewer.VerticalOffset - (top - bounds.Top) - 8);
+    }
+
+    private void MinimizeWindowButton_Click(object sender, RoutedEventArgs e) => System.Windows.SystemCommands.MinimizeWindow(this);
+    private void CloseWindowButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || e.GetPosition(DesignRoot).Y > 80.845
+            || AccountOverlay.Visibility == Visibility.Visible || DetailsOverlay.Visibility == Visibility.Visible) return;
+        if (e.ClickCount == 1 && e.LeftButton == MouseButtonState.Pressed) DragMove();
+        e.Handled = true;
     }
 
     private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
@@ -572,10 +633,12 @@ public partial class MainWindow : Window
         catch (Exception ex) { Notify("导出失败：" + ex.Message); }
         finally { if (button != null) button.IsEnabled = true; }
     }
-    private void GitHubButton_Click(object sender, RoutedEventArgs e)
+    private void RechargeButton_Click(object sender, RoutedEventArgs e) => OpenServiceLink(ServiceLinks.RechargeUrl);
+    private void ChangePasswordButton_Click(object sender, RoutedEventArgs e) => OpenServiceLink(ServiceLinks.ChangePasswordUrl);
+    private void GitHubButton_Click(object sender, RoutedEventArgs e) => OpenServiceLink(ServiceLinks.GitHubUrl);
+    private void OpenServiceLink(string url)
     {
-        try { Process.Start(new ProcessStartInfo("https://github.com/FLEETING-XHX/ESurfingDialer") { UseShellExecute = true }); }
-        catch (Exception ex) { Notify("无法打开浏览器：" + ex.Message); }
+        if (!ServiceLinks.TryOpen(url, _browserLauncher)) Notify("无法打开默认浏览器，请检查浏览器设置后重试。");
     }
     private void Notify(string message)
     {

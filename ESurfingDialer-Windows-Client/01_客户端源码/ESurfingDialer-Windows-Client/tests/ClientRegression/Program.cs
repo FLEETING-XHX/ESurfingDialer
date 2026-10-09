@@ -14,6 +14,80 @@ internal static partial class Program
     [STAThread]
     private static int Main(string[] args) => RunHarness(args);
 
+    // 不同工作区只验证尺寸和锚点；实际HWND、DPI、拖动与窗口按钮另由UI检查验证。
+    private static void WindowSizingMathChecks()
+    {
+        var sizing = typeof(WindowSizing);
+        var pixelType = sizing.GetNestedType("PixelSize", BindingFlags.NonPublic)!;
+        var rectType = sizing.GetNestedType("NativeRect", BindingFlags.NonPublic)!;
+        object Pixel(int width, int height) => Activator.CreateInstance(pixelType, width, height)!;
+        object Rect(int left, int top, int right, int bottom) => Activator.CreateInstance(rectType, left, top, right, bottom)!;
+        (int Width, int Height) SizeOf(object size) =>
+            ((int)pixelType.GetProperty("Width")!.GetValue(size)!, (int)pixelType.GetProperty("Height")!.GetValue(size)!);
+        (int Left, int Top, int Right, int Bottom) BoundsOf(object bounds) =>
+            ((int)rectType.GetField("Left")!.GetValue(bounds)!, (int)rectType.GetField("Top")!.GetValue(bounds)!,
+             (int)rectType.GetField("Right")!.GetValue(bounds)!, (int)rectType.GetField("Bottom")!.GetValue(bounds)!);
+        var fit = sizing.GetMethod("FitSize", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var constrain = sizing.GetMethod("ConstrainSizing", BindingFlags.Static | BindingFlags.NonPublic)!;
+        (int Width, int Height) Fit(double scale, object work) =>
+            SizeOf(fit.Invoke(null, new[] { (object)scale, work, 0.8 })!);
+        bool PreviewRatio((int Width, int Height) size) =>
+            size.Width > 0 && size.Height > 0 && Math.Abs(size.Width - size.Height * 449.0 / 912) <= 0.8;
+        var work = Rect(0, 0, 1920, 1040);
+        foreach (var monitor in new[] { (Width: 1920, Height: 1040), (Width: 2560, Height: 1400),
+            (Width: 3840, Height: 2120), (Width: 800, Height: 640) })
+        {
+            var area = Rect(0, 0, monitor.Width, monitor.Height);
+            var normal = Fit(1, area);
+            Check(PreviewRatio(normal) && normal.Height <= monitor.Height - 24
+                && (monitor.Height < 936 || normal == (449, 912)),
+                "First-open size is 449 by 912 when it fits and remains proportional on smaller work areas " + monitor);
+            var enlarged = Fit(1.2, area);
+            Check(PreviewRatio(enlarged) && enlarged.Height >= normal.Height && enlarged.Height <= monitor.Height - 24,
+                "Enlargement remains proportional and stays inside the work area " + monitor);
+            var minimum = Fit(0.1, area);
+            Check(PreviewRatio(minimum) && minimum.Height <= normal.Height
+                && (monitor.Height < 754 || Math.Abs(minimum.Height - 730) <= 1),
+                "Minimum size stays usable and adapts to small work areas " + monitor);
+            var maximum = Fit(double.MaxValue, area);
+            Check(PreviewRatio(maximum) && maximum.Width <= monitor.Width - 24 && maximum.Height <= monitor.Height - 24,
+                "Expanded size preserves the preview ratio without covering the taskbar " + monitor);
+            var small = Fit(1, Rect(-200, 100, -100, 300));
+            Check(PreviewRatio(small) && small.Width <= 76 && small.Height <= 176 && small.Height < 730,
+                "Small offset work areas may shrink below the normal minimum while preserving the preview ratio " + monitor);
+        }
+
+        var initial = Fit(1, work);
+        var roomy = Rect(0, 0, 3840, 2160);
+        for (var edge = 1; edge <= 8; edge++)
+        {
+            const int left = 600, top = 600;
+            var right = left + initial.Width;
+            var bottom = top + initial.Height;
+            var proposedLeft = edge is 1 or 4 or 7 ? left - 80 : left;
+            var proposedRight = edge is 2 or 5 or 8 ? right + 80 : right;
+            var proposedTop = edge is 3 or 4 or 5 ? top - 120 : top;
+            var proposedBottom = edge is 6 or 7 or 8 ? bottom + 120 : bottom;
+            var adjusted = BoundsOf(constrain.Invoke(null, new[] { Rect(proposedLeft, proposedTop, proposedRight, proposedBottom),
+                (object)edge, roomy, 0.8, Pixel(initial.Width, initial.Height) })!);
+            var size = (Width: adjusted.Right - adjusted.Left, Height: adjusted.Bottom - adjusted.Top);
+            var anchored = edge switch
+            {
+                1 => adjusted.Right == right && Math.Abs(adjusted.Top + adjusted.Bottom - top - bottom) <= 1,
+                2 => adjusted.Left == left && Math.Abs(adjusted.Top + adjusted.Bottom - top - bottom) <= 1,
+                3 => adjusted.Bottom == bottom && Math.Abs(adjusted.Left + adjusted.Right - left - right) <= 1,
+                4 => adjusted.Right == right && adjusted.Bottom == bottom,
+                5 => adjusted.Left == left && adjusted.Bottom == bottom,
+                6 => adjusted.Top == top && Math.Abs(adjusted.Left + adjusted.Right - left - right) <= 1,
+                7 => adjusted.Right == right && adjusted.Top == top,
+                8 => adjusted.Left == left && adjusted.Top == top,
+                _ => false
+            };
+            Check(PreviewRatio(size) && anchored,
+                "Drag edge " + edge + " keeps the opposite anchor and the 449 by 912 preview ratio");
+        }
+    }
+
     private static void Run(string[] args)
     {
         if (args.Contains("--idle")) { Console.ReadLine(); return; }
@@ -29,6 +103,8 @@ internal static partial class Program
             FailureFixture(args);
             return;
         }
+        if (args.Contains("--ui-only")) { UiOnlyChecks(args); return; }
+        WindowSizingMathChecks();
         var output = Path.GetFullPath(args.FirstOrDefault() ?? "artifacts/ui");
         Directory.CreateDirectory(output);
         Environment.SetEnvironmentVariable("ESURFING_CLIENT_HOME", Path.Combine(output, "test-data"));
@@ -148,20 +224,24 @@ internal static partial class Program
         Check(ClientLog.Redact("old-regression-secret") == "old-regression-secret"
               && ClientLog.Redact("new-regression-secret") == "[REDACTED]", "Log secret cache replaces stale values");
 
+        var previousUiContext = SynchronizationContext.Current;
         var app = new System.Windows.Application();
         app.DispatcherUnhandledException += (_, e) => { _dispatcherFailure = e.Exception; e.Handled = true; };
         SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
-        var window = new MainWindow(previewMode: true);
+        var browserLaunches = new List<System.Diagnostics.ProcessStartInfo>();
+        var rejectBrowserLaunch = false;
+        var window = new MainWindow(true, info =>
+        {
+            browserLaunches.Add(info);
+            if (rejectBrowserLaunch) throw new InvalidOperationException("synthetic browser launch failure");
+        });
         try
         {
+            EmbeddedFontChecks(window, output);
             var root = (FrameworkElement)window.Content;
             void Render(string name)
             {
-                root.Measure(new Size(484, 800)); root.Arrange(new Rect(0, 0, 484, 800)); root.UpdateLayout();
-                var image = new RenderTargetBitmap(484, 800, 96, 96, PixelFormats.Pbgra32);
-                image.Render(root);
-                var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
-                using var stream = File.Create(Path.Combine(output, name + ".png")); encoder.Save(stream);
+                RenderPenPage(window, output, name, ((UIElement)window.FindName("SettingsPage")).Visibility == Visibility.Visible ? 940 : 860);
             }
             object? Call(string method, params object[] parameters) =>
                 typeof(MainWindow).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, parameters);
@@ -199,10 +279,10 @@ internal static partial class Program
             Check(!summary.Focusable, "Account summary is not an interactive button");
             summary.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent });
             Check(Node<UIElement>("AccountOverlay").Visibility == Visibility.Collapsed, "Account summary click does not open management");
-            Check(Node<TextBlock>("DownloadSpeedText").Foreground == window.FindResource("Green") &&
-                  Node<TextBlock>("UploadSpeedText").Foreground == window.FindResource("Coral"), "Download and upload use distinct semantic colors");
-            Check(Node<TextBlock>("DownloadSpeedText").Foreground == Node<System.Windows.Shapes.Polyline>("DownloadLine").Stroke &&
-                  Node<TextBlock>("UploadSpeedText").Foreground == Node<System.Windows.Shapes.Polyline>("UploadLine").Stroke, "Rate colors match trend lines");
+            Check(((SolidColorBrush)Node<TextBlock>("DownloadSpeedText").Foreground).Color == Color.FromRgb(0x9D, 0xD7, 0xAB) &&
+                  ((SolidColorBrush)Node<TextBlock>("UploadSpeedText").Foreground).Color == Color.FromRgb(0xF0, 0xA2, 0x94), "Rate values match their download and upload colors in the approved Pen design");
+            Check(((SolidColorBrush)Node<System.Windows.Shapes.Shape>("DownloadLine").Stroke).Color == Color.FromRgb(0x9D, 0xD7, 0xAB) &&
+                  ((SolidColorBrush)Node<System.Windows.Shapes.Shape>("UploadLine").Stroke).Color == Color.FromRgb(0xF0, 0xA2, 0x94), "Trend lines retain distinct soft colors from the updated Pen design");
             Check(Node<ContentControl>("CampusIconControl").Content == window.FindResource("PenCampusIcon"), "Campus card uses Pen icon");
             Render("home");
             Check(window.FindName("StatusDot") == null && window.FindName("StatusText") == null,
@@ -237,7 +317,7 @@ internal static partial class Program
                     var top = value.TransformToAncestor(container).Transform(new Point()).Y;
                     Check(value.ActualHeight + 1 >= natural.DesiredSize.Height &&
                           top >= 0 && top + value.ActualHeight <= container.ActualHeight,
-                        name + " fits natural glyph height and card: " + font);
+                        $"{name} fits natural glyph height and card: {font} (top={top:F2}, glyph={value.ActualHeight:F2}/{natural.DesiredSize.Height:F2}, card={container.ActualHeight:F2})");
                 }
             }
             window.FontFamily = originalFont;
@@ -252,12 +332,13 @@ internal static partial class Program
             Render("home");
             var navIcons = new[] { "Home", "Logs", "Settings" }.Select(n => Node<ContentControl>(n + "NavIcon")).ToArray();
             var dpi = VisualTreeHelper.GetDpi(root);
-            Check(navIcons.All(n => Math.Abs(n.ActualWidth - 21) <= 1 / dpi.DpiScaleX
-                                   && Math.Abs(n.ActualHeight - 21) <= 1 / dpi.DpiScaleY),
+            Check(navIcons.All(n => Math.Abs(n.ActualWidth - 20) <= 1 / dpi.DpiScaleX
+                                   && Math.Abs(n.ActualHeight - 20) <= 1 / dpi.DpiScaleY),
                 "Navigation icons share Pen dimensions");
             var iconTop = navIcons[0].TransformToAncestor(root).Transform(new Point()).Y;
             Check(navIcons.All(n => Math.Abs(n.TransformToAncestor(root).Transform(new Point()).Y - iconTop) < 0.1), "Navigation icons share baseline");
-            Check(Node<FrameworkElement>("SpeedChart").ActualWidth == 412 && Node<FrameworkElement>("SpeedChart").ActualHeight == 28, "Trend chart matches Pen geometry");
+            Check(Math.Abs(Node<FrameworkElement>("SpeedChart").ActualWidth - 334.544) <= 1 &&
+                Math.Abs(Node<FrameworkElement>("SpeedChart").ActualHeight - 30.59) <= 1, "Trend chart matches the updated Pen geometry within layout rounding");
             Check(Node<ContentControl>("LogsNavIcon").Content == window.FindResource("PenLogIcon"), "Navigation uses exported Pen glyphs");
             Call("ShowPage", Node<UIElement>("LogsPage")); Render("logs");
             Check(Node<Button>("LogsNavButton").Foreground == window.FindResource("Coral"), "Navigation active color");
@@ -268,9 +349,10 @@ internal static partial class Program
             liveConfig.AutoStart = true;
             Call("ApplySettings"); Render("settings-expanded");
             Check(Node<Border>("MinimizeSettingRow").Visibility == Visibility.Visible, "Secondary setting displayed");
-            var bottom = Node<FrameworkElement>("SettingsPage");
-            var settingPanel = (StackPanel)((Grid)bottom).Children[0];
-            Check(settingPanel.DesiredSize.Height <= bottom.ActualHeight, "Expanded settings fit above navigation");
+            window.Show();
+            CompactSettingsChecks(window);
+            ServiceLinkChecks(window, browserLaunches, () => rejectBrowserLaunch = true);
+            Render("settings-expanded");
             Call("ShowPage", Node<UIElement>("HomePage"));
             Node<Button>("AccountManagementButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(Node<UIElement>("AccountOverlay").Visibility == Visibility.Visible, "Management card still opens account sheet");
@@ -327,8 +409,18 @@ internal static partial class Program
                 Check(!text.Contains(secret) && !text.Contains("test-account-001") && !text.Contains("sample-ticket"), "Export redaction: " + entry.FullName);
             }
         }
-        finally { window.ShutdownClient(); window.Close(); app.Shutdown(); }
-        if (args.Contains("--core")) SupervisorChecks(store.Load());
+        finally
+        {
+            try { window.ShutdownClient(); window.Close(); app.Shutdown(); }
+            finally { SynchronizationContext.SetSynchronizationContext(previousUiContext); }
+        }
+        if (args.Contains("--core"))
+        {
+            async Task RecoveryContinuation() { await Task.Yield(); }
+            Check(RecoveryContinuation().Wait(TimeSpan.FromSeconds(2)),
+                "Process recovery continuation can run after WPF shutdown");
+            SupervisorChecks(store.Load());
+        }
         Console.WriteLine($"PASS: {_checks} checks; WPF renders: {output}");
     }
     private static System.Diagnostics.Process Worker(params string[] arguments)

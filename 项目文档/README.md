@@ -1,39 +1,61 @@
-# 项目文档索引
+# 文档清单与用途
 
-更新日期：2026-10-08。先从下方当前入口阅读；已完成修复的原因、验证和历史交付保留在记录中，不再重复列为未来工作。
+更新：2026-10-08。看进度先读[修复与优化总记录](修复与优化总记录.md)，查操作再看对应说明。
 
-## 当前入口
+日常维护共26份 Markdown：Docker目录6份、Windows目录6份、共用及专项10份、本机协作4份。重复的24份历史报告/旧计划已删除，原文和两份旧 CHANGELOG 收在[历史归档](归档/历史Markdown_20261008.zip)，不再逐份维护。
 
-| 目的 | 文档 |
+## Docker目录 · 6份
+
+下表“源码”指 `ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed`。
+
+| 文件 | 大致用途 |
 | --- | --- |
-| 下一步做什么 | [统一待办与验收](PENDING-OPTIMIZATIONS.md)、[未来方向](ROADMAP.md) |
-| Windows操作与最新本地包 | [使用说明](WINDOWS-USER-GUIDE.md)、[v2.3beta.2交付](WINDOWS-LOCAL-BETA-2026-09-30.md) |
-| Windows认证与长期验收 | [现场验收计划](AUTH-REPAIR-PLAN.md)、[故障/稳定性/迁移基线](WINDOWS-STABILITY-AND-MIGRATION-BASELINE.md) |
-| Docker正式版与beta3操作 | [v1.3图文教程](../ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)、[beta3操作](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_BETA.md) |
-| Docker最新本地包与现场结果 | [10-08交付](DOCKER-LOCAL-BETA3-PORTAL-2026-10-08.md)、[门户诊断与首轮成功](DOCKER-BETA3-PORTAL-FAILURE-2026-10-07.md) |
-| Linear编号、依赖与关闭依据 | [同步与10-08核查](LINEAR-WINDOWS-ISSUES-2026-09-30.md) |
+| [产品 README](../ESurfingDialer-Docker/README.md) | 产品介绍、下载和部署入口 |
+| [源码 README](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README.md) | 源码结构、配置、在线构建和维护说明 |
+| [源码 README_OFFLINE](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_OFFLINE.md) | 正式版离线安装、凭据填写、升级和回滚 |
+| [源码 README_BETA](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_BETA.md) | beta独立部署、版本互斥、更新及测试步骤 |
+| [源码 CHANGELOG](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/CHANGELOG.md) | 打包器需要的简短入口，更新内容统一跳转总记录 |
+| [图文部署教程](../ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | v1.3软路由图文操作教程 |
 
-## 当前产品状态
+## Windows目录 · 6份
 
-| 产品 | 交付与已验证 | 仍未完成 |
-| --- | --- | --- |
-| Windows | 已发布v2.3beta；本地v2.3beta.2含八项、六项及入口修复，188项包内检查/EXE启动通过，测试包未上传/未公开发布 | 现场格式/算法与真实认证、恢复/安装矩阵、长期稳定及统一发布门禁 |
-| Docker | 已发布v1.3；本地`beta3-portal-fix-20261008`含门户兼容修复，用户一次登录/首次keep确认及上网通过，测试包未上传/未公开发布 | 周期心跳、自然掉线/重认证、完整部署/恢复矩阵、资源趋势与注销确认；beta仅amd64 |
+下表“源码”指 `ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client`。
 
-一次真实登录不等于长期稳定，合成回归也不等于现场验收；源码、已生成包和已发布版本分别记录。
-
-## 修复与交付依据
-
-| 分类 | 记录 |
+| 文件 | 大致用途 |
 | --- | --- |
-| Windows修复 | [八项后续修复](WINDOWS-CLIENT-FIXES-2026-09-29.md)、[六项离线修复](WINDOWS-OFFLINE-FIXES-2026-09-30.md)、[恢复/会话修复](RECOVERY-REPAIR-REPORT.md) |
-| Windows现场与算法 | [初始化失败记录](WINDOWS-AUTH-SESSION-ISSUE.md)、[原生/设计审计](WINDOWS-DESIGN-AND-AUTH-AUDIT-2026-09-30.md)、[C参考对照](C-REFERENCE-REVIEW.md) |
-| Windows历史发布与研究 | [v2.3beta发布快照](V2.3BETA-RELEASE.md)、[去JVM研究](WINDOWS-NO-JVM-MIGRATION-PLAN.md) |
-| Docker修复 | [beta1](DOCKER-BETA-REPAIR.md)、[beta2](DOCKER-BETA2-REPAIR.md)、[09-28门户](DOCKER-PORTAL-CONFIG-PLAN.md)、[09-29后续](DOCKER-BETA-FOLLOWUP-2026-09-29.md) |
-| Docker历史交付 | [10-07旧beta3快照](DOCKER-LOCAL-BETA3-2026-10-07.md)、[中文更新日志](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/CHANGELOG.md) |
-| 修复前审查与旧设计 | [Windows 09-29审查](WINDOWS-FOLLOWUP-REVIEW-2026-09-29.md)、[两端09-28审查](BETA-CLIENT-REVIEW-2026-09-28.md)、[Docker v1.3分析](DOCKER-REFERENCE-ANALYSIS.md)、[UI/恢复历史](UI-AND-RECOVERY.md) |
-| Linear首次范围 | [已执行的创建范围记录](LINEAR-WINDOWS-ISSUE-PLAN-2026-09-30.md)，不能作为重复创建指令 |
+| [产品 README](../ESurfingDialer-Windows-Client/README.md) | 产品介绍、下载、当前本地包和使用入口 |
+| [源码 README](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/README.md) | 开发、构建、打包和日志位置 |
+| [核心 README](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/core/ESurfingDialerCore/README.md) | 认证核心职责、运行配置及与WPF的边界 |
+| [核心 CHANGELOG](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/core/ESurfingDialerCore/CHANGELOG.md) | 源码/交付检查的简短入口，更新内容统一跳转总记录 |
+| [图标 README](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/resources/icons/README.md) | 图标用途、状态颜色及资源规格 |
+| [客户端回归 README](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/tests/ClientRegression/README.md) | 回归、短压、实际EXE启动检查及结果判定 |
 
-历史报告保留独有根因、触发条件、回归结果和包摘要；过期开发步骤已压缩，剩余工作统一指向待办清单。旧包及包内文档保持原快照，不随本次整理重写。
+## 共用及专项文档 · 10份
 
-外部C参考保留来源与许可，其算法/平台能力不能直接当成本项目的实现或验收。本机工具协作说明与交接仅本地维护，不加入公共上传内容。
+除根目录 README 外，以下都在 `项目文档`。
+
+| 文件 | 大致用途 |
+| --- | --- |
+| [根目录 README](../README.md) | 整个项目的介绍、下载和产品导航 |
+| [本页 README](README.md) | 现存Markdown清单及用途 |
+| [修复与优化总记录](修复与优化总记录.md) | Docker/Windows历史改动、交付状态和全部待办；以后统一更新这里 |
+| [Windows使用说明](WINDOWS-USER-GUIDE.md) | 安装、账户、托盘、设置和常见故障 |
+| [Windows现场故障](WINDOWS-AUTH-SESSION-ISSUE.md) | 区分历史原生失败、新门户问题和初始化空响应，保留证据边界 |
+| [Windows当前交付凭据](WINDOWS-BOOTSTRAP-UA-FIX-2026-10-08.md) | UA2104受控对照、当前beta3包摘要及实际验证范围 |
+| [Windows稳定/迁移基线](WINDOWS-STABILITY-AND-MIGRATION-BASELINE.md) | 资源实测、问题编号、长期验收及迁移必须保留的行为 |
+| [Windows去JVM研究](WINDOWS-NO-JVM-MIGRATION-PLAN.md) | C#/Go迁移可行性、技术起点和前提；尚未实施 |
+| [Linear同步记录](LINEAR-WINDOWS-ISSUES-2026-09-30.md) | Issue编号、依赖及核查时的完成条件，不代表远端已更新 |
+| [Docker当前交付凭据](DOCKER-LOCAL-BETA3-PORTAL-2026-10-08.md) | 当前beta3包/镜像摘要、构建检查与首次现场成功证据 |
+
+## 本机协作文档 · 4份
+
+仅本地维护，不上传GitHub。
+
+| 文件 | 大致用途 |
+| --- | --- |
+| 根目录 `AGENTS.md` | 工具开始任务时读取的项目规则入口 |
+| `项目文档/协作规则.md` | 分支、文件认领、隐私和协作约定 |
+| `项目文档/PROJECT-GUIDE.md` | 架构、源码路径、开发命令和接手说明 |
+| `项目文档/DEVELOPMENT-HANDOFF.md` | 本机工具任务、改动范围、验证与遗留交接 |
+
+构建/验证目录另有632份生成或冻结副本，供重现旧包使用，未删除，也不当作日常维护文档。交付包及源码归档保持原样；外部C参考项目的文档另属上游，本轮没动。
