@@ -1,0 +1,13 @@
+本客户端内嵌 Noto Sans SC 静态字体，遵守同目录 NotoSansSC-OFL.txt 的 SIL OFL 1.1。
+Regular / Bold 保留完整 31,036 字形与 30,890 Unicode 字符，用于任意账户备注及日志内容。
+Medium / SemiBold 是当前界面固定文字的子集，用于导航标签与连接状态胶囊；新增相应字重文字时需同步更新子集。
+字体从 NotoSansSC-VF.ttf 按 400 / 500 / 600 / 700 字重生成；静态 SemiBold 移除空 STAT 元数据表，保证 WPF 正确识别600字重。
+四字体共约20.57 MiB。源字体不是 WPF 可直接按设计字重使用的可变字体，不依赖目标系统安装 Noto Sans SC。
+
+维护时在 Windows 客户端源码根目录运行（Python 环境需已有 fontTools）：
+py ./scripts/Update-UiFonts.py --source 'C:/本地字体目录/NotoSansSC-VF.ttf'
+若 fontTools 位于本机独立依赖目录，追加 --fonttools-dir 'C:/本地依赖目录'（该目录包含 fontTools 包）。
+默认只生成到新的 artifacts/fonts-rebuild；目录已存在时改用 --output 指定全新目录，不会联网下载或自动安装依赖。
+脚本扫描 app/ESurfingDialerLite 下的 .xaml/.cs（排除 bin/obj），覆盖界面中文、可打印 ASCII 及源字体支持的标点。
+它保留 Regular/Bold 的全部字形与 cmap，核对四款静态字重、字符覆盖和 name 元数据，并附 OFL 与 font-rebuild-evidence.json。
+核对证据并重新执行客户端 UI 回归后，再人工更新本目录的四款 .ttf；脚本不会替换正式字体或用户配置。
