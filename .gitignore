@@ -40,3 +40,6 @@ Desktop.ini
 # v2.4 delivery evidence and binaries stay local; product assets go to Releases.
 /ESurfingDialer-Windows-Client/00_最终安装包/Windows客户端_v2.4/
 /ESurfingDialer-Docker/00_最终部署包/Docker_v2.4/
+
+# 外部参考源码只在本机保留，避免再次误提交。
+/ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)/

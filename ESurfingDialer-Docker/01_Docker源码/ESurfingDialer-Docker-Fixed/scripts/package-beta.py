@@ -194,7 +194,7 @@ docker compose --project-name esurfing-dialer-beta3 up -d "$@" --no-build --pull
     (package / "scripts/openwrt-watchdog.sh").write_text(watchdog, encoding="utf-8", newline="\n")
     (package / "scripts/measure-runtime.sh").write_text((source / "scripts/measure-runtime.sh").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     (package / "docker/health-state.sh").write_text((source / "docker/health-state.sh").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
-    (package / "README_BETA.md").write_text((source / "README_BETA.md").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+    (package / "README_BETA.md").write_text((source.parents[1] / "02_使用教程/历史版本/Docker-beta3测试说明.md").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     (package / "VERSION").write_text(VERSION + "\n", encoding="utf-8")
     (package / "BUILD_ID").write_text(args.build_id + "\n", encoding="utf-8")
     (package / "BUILDINFO.json").write_bytes(serialized(metadata))

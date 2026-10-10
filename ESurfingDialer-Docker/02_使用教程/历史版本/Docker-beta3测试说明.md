@@ -1,5 +1,7 @@
 # Docker v1.4.0-beta.3 本地测试包
 
+本文保留历史 beta3 的独立部署与测试步骤，不用于当前正式版；当前用户请看[图文部署教程](https://github.com/FLEETING-XHX/ESurfingDialer/blob/main/ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)。下文版本、状态与检查数字均为当时快照。
+
 仅本地交付，未上传 GitHub。支持 **linux/amd64（x86_64）**，不包含 arm64 镜像。本包重建当前 Docker 核心，包含 beta2、09-28 门户解析及 09-29 探测/待认证请求/凭据转义修复。
 
 2026-10-08 门户修复重包仍使用 **v1.4.0-beta.3**，构建标识为`beta3-portal-fix-20261008`（见`BUILD_ID`）。新增属性查询串裸`&`兼容、逐项校验后合并规范化相同的auth地址，以及更明确的XML诊断；冲突地址、非法XML及重复ticket仍拒绝。源码276项认证回归通过；用户同日已完成一次真实登录、首次keep确认并可上网，持续心跳、掉线恢复和长期稳定仍待验收。历史ZIP内说明保留打包当时快照。

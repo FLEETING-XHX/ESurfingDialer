@@ -2,7 +2,7 @@
 
 更新：2026-10-10。看进度先读[修复与优化总记录](修复与优化总记录.md)，查操作再看对应说明。
 
-下表按产品列出维护文档；v2.4 新增统一发布说明与 Docker 离线部署说明。重复的24份历史报告/旧计划已删除，原文和两份旧 CHANGELOG 收在[历史归档](归档/历史Markdown_20261008.zip)，不再逐份维护。
+下表列出保留的使用、开发与验证文档。Docker 部署统一使用图文教程，任务进度与 Linear 编号统一在总记录维护；重复产品入口、旧离线说明、简版部署说明和过时状态快照已删除。更早的24份历史报告/旧计划及两份旧 CHANGELOG 原文收在[历史归档](归档/历史Markdown_20261008.zip)。
 
 ## Docker目录
 
@@ -10,21 +10,17 @@
 
 | 文件 | 大致用途 |
 | --- | --- |
-| [产品 README](../ESurfingDialer-Docker/README.md) | 产品介绍、下载和部署入口 |
 | [源码 README](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README.md) | 源码结构、配置、在线构建和维护说明 |
-| [v2.4 部署说明](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_RELEASE.md) | 当前离线包安装、启动、迁移与验证边界 |
-| [源码 README_OFFLINE](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_OFFLINE.md) | 正式版离线安装、凭据填写、升级和回滚 |
-| [源码 README_BETA](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_BETA.md) | beta独立部署、版本互斥、更新及测试步骤 |
+| [图文部署教程](../ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | WinSCP 上传、SSH 登录、v2.4 安装启动、迁移与常见问题 |
+| [历史 beta3 测试说明](../ESurfingDialer-Docker/02_使用教程/历史版本/Docker-beta3测试说明.md) | 旧 beta 独立部署、版本互斥与更新；也供历史打包器读取 |
 | [源码 CHANGELOG](../ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/CHANGELOG.md) | 打包器需要的简短入口，更新内容统一跳转总记录 |
-| [图文部署教程](../ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | v1.3软路由图文操作教程 |
 
-## Windows目录 · 6份
+## Windows目录
 
 下表“源码”指 `ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client`。
 
 | 文件 | 大致用途 |
 | --- | --- |
-| [产品 README](../ESurfingDialer-Windows-Client/README.md) | 产品介绍、下载、当前本地包和使用入口 |
 | [源码 README](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/README.md) | 开发、构建、打包和日志位置 |
 | [核心 README](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/core/ESurfingDialerCore/README.md) | 认证核心职责、运行配置及与WPF的边界 |
 | [核心 CHANGELOG](../ESurfingDialer-Windows-Client/01_客户端源码/ESurfingDialer-Windows-Client/core/ESurfingDialerCore/CHANGELOG.md) | 源码/交付检查的简短入口，更新内容统一跳转总记录 |
@@ -47,7 +43,6 @@
 | [Windows beta3 现场凭据](WINDOWS-BOOTSTRAP-UA-FIX-2026-10-08.md) | UA2104受控对照、当前beta3包摘要及实际验证范围 |
 | [Windows稳定/迁移基线](WINDOWS-STABILITY-AND-MIGRATION-BASELINE.md) | 资源实测、问题编号、长期验收及迁移必须保留的行为 |
 | [Windows去JVM研究](WINDOWS-NO-JVM-MIGRATION-PLAN.md) | C#/Go迁移可行性、技术起点和前提；尚未实施 |
-| [Linear同步记录](LINEAR-WINDOWS-ISSUES-2026-09-30.md) | Issue编号、依赖及核查时的完成条件，不代表远端已更新 |
 | [Docker beta3 现场凭据](DOCKER-LOCAL-BETA3-PORTAL-2026-10-08.md) | 当前beta3包/镜像摘要、构建检查与首次现场成功证据 |
 
 ## 本机协作文档 · 4份
@@ -61,4 +56,4 @@
 | `项目文档/PROJECT-GUIDE.md` | 架构、源码路径、开发命令和接手说明 |
 | `项目文档/DEVELOPMENT-HANDOFF.md` | 本机工具任务、改动范围、验证与遗留交接 |
 
-构建/验证目录另有632份生成或冻结副本，供重现旧包使用，未删除，也不当作日常维护文档。交付包及源码归档保持原样；外部C参考项目的文档另属上游，本轮没动。
+构建/验证目录中的生成或冻结副本用于重现旧包，不当作日常维护文档。交付包、源码归档与本项目许可证保持原样。外部C参考源码只保留本机，已从本仓库移除；上游文档见 [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion)。

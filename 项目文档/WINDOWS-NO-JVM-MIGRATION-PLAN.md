@@ -10,7 +10,7 @@
 
 ## 本地可用的技术起点
 
-本地参考目录 `ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)` 提供：
+参考 [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) 的本地 2.1.1-r4 源码快照（仅供研究，不随本仓库提交），其中包含：
 
 - `esurfingclient/main/src/cipher/CipherFactory.c`：按 Algo-ID 选择算法，覆盖 Linux 与新版 Android 路线；部分旧 Android 分支已注释停用，不能将文件存在等同于当前支持。
 - `cipher/algo/android`：双层 AES、双层 3DES、六层 DES、改版 TEA、SM4 和 SNOW3G 等可读实现。

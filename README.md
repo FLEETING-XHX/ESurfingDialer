@@ -2,6 +2,8 @@
 
 **ESurfingDialer / Tianyi Campus** 是校园网认证工具，提供 Windows 客户端和 Docker 软路由版本，可以根据使用环境选择。
 
+本项目采用单仓库多产品结构，仓库根目录统一命名为 `ESurfingDialer`；内部 `ESurfingDialer-Windows-Client` 和 `ESurfingDialer-Docker` 分别维护两个产品。
+
 如果你更熟悉“天翼校园”这个名字，也可以用“天翼校园认证”“校园网认证”或“ESurfingDialer”等关键词找到本项目。
 
 ### Windows 客户端
@@ -22,7 +24,7 @@ v2.4 汇入认证通道、门户解析和连接恢复修复，更新界面、内
 
 [下载 Docker v2.4 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.4/ESurfingDialer-Docker-v2.4.zip)
 
-[查看 Docker v2.4 部署说明](ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_RELEASE.md)
+[查看 Docker 软路由图文部署教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)
 
 离线包包含镜像、安装脚本和配置模板，准备好文件后无需公网拉取镜像。解压后运行 `sh install.sh`，安装默认只创建容器；停止旧认证容器后运行 `sh start.sh`。
 
@@ -43,8 +45,7 @@ v2.4 汇入门户兼容、会话恢复、健康监督、日志限额与审查修
 | [修复与优化总记录](项目文档/修复与优化总记录.md) | 按 Docker / Windows 查看历史改动与当前待办 |
 | [文档清单与用途](项目文档/README.md) | 各产品与共用文档的入口 |
 | [Windows 使用说明](项目文档/WINDOWS-USER-GUIDE.md) | 账户、连接、托盘、设置和故障排查 |
-| [Docker v2.4 部署说明](ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_RELEASE.md) | 离线安装、启动、迁移与配置保留 |
-| [Docker 历史图文教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | v1.3 的截图与旧版安装步骤 |
+| [Docker 软路由图文部署教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | WinSCP 上传、SSH 登录、v2.4 离线安装、启动及迁移 |
 
 ## 致谢
 
