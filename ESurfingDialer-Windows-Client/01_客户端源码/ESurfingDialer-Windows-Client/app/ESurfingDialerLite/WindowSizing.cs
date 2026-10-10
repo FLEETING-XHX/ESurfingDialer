@@ -6,11 +6,12 @@ using System.Windows.Threading;
 
 namespace ESurfingDialerLite;
 
-/// <summary>无标题栏窗口以449×912物理像素首开，手动调整保持预览比例，禁用最大化。</summary>
+/// <summary>无标题栏窗口按显示器 DPI 与工作区适配首开尺寸，保持449×912预览比例，禁用最大化。</summary>
 /// <remarks>
-/// 初次显示按所在显示器 DPI 换算 WPF Width/Height；跨 DPI 显示器保留所选物理尺寸。
+/// 125% DPI 下以449×912物理像素为基准，初次显示跟随系统缩放，最多占工作区90%。
+/// 跨 DPI 显示器保留所选物理尺寸，再按目标显示器的最小尺寸与工作区限幅。
 /// 保留边框等比调整和最小化，移除系统最大化入口；不遮挡任务栏。
-/// 工作区预留12像素余量；默认最小为首开尺寸的0.8倍，小屏不足时继续等比缩小。
+/// 工作区预留12像素余量；默认最小为所在显示器适配首开尺寸的0.8倍。
 /// 整数像素舍入允许不足 1 个像素的宽高误差；不使用后台计时器。
 /// </remarks>
 public sealed class WindowSizing : IDisposable
@@ -19,6 +20,8 @@ public sealed class WindowSizing : IDisposable
     public const int DesignHeight = 912;
     public const int DefaultWidthPixels = 449;
     public const int DefaultHeightPixels = 912;
+    private const uint ReferenceDpi = 120;
+    private const double StartupWorkAreaFraction = 0.9;
     private const int WorkAreaInsetPixels = 12;
     private const int WmGetMinMaxInfo = 0x0024;
     private const int WmWindowPosChanging = 0x0046;
@@ -53,7 +56,7 @@ public sealed class WindowSizing : IDisposable
 
     /// <summary>
     /// 在 InitializeComponent 后调用一次即可；已加载的窗口也可接入。
-    /// minimumScale 是默认物理尺寸的最小倍数，小屏工作区不足时允许进一步缩小。
+    /// minimumScale 是所在显示器适配首开尺寸的最小倍数。
     /// </summary>
     public static WindowSizing Attach(Window window, double minimumScale = 0.8)
     {
@@ -95,7 +98,7 @@ public sealed class WindowSizing : IDisposable
         SetWindowLong(handle, GwlStyle, GetWindowLong(handle, GwlStyle) & ~WsMaximizeBox);
         SetWindowPos(handle, IntPtr.Zero, 0, 0, 0, 0,
             SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
-        ApplyBounds(DefaultHeightPixels, null, center: true);
+        ApplyBounds(0, null, center: true);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e) => ApplyLoadedSize();
@@ -105,7 +108,7 @@ public sealed class WindowSizing : IDisposable
         if (_loadedApplied || _disposed) return;
         _loadedApplied = true;
         AttachSource();
-        ApplyBounds(DefaultHeightPixels, null, center: true);
+        ApplyBounds(0, null, center: true);
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -154,8 +157,9 @@ public sealed class WindowSizing : IDisposable
         {
             var limits = Marshal.PtrToStructure<MinMaxInfo>(lParam);
             var work = GetWorkArea(CurrentBounds());
-            var maximum = FitSize(double.MaxValue, work, _minimumScale);
-            var minimum = FitSize(_minimumScale, work, _minimumScale);
+            var minimumScale = MinimumScale(work);
+            var maximum = FitSize(double.MaxValue, work, minimumScale);
+            var minimum = FitSize(minimumScale, work, minimumScale);
             limits.MinTrackSize = new NativePoint(minimum.Width, minimum.Height);
             limits.MaxTrackSize = new NativePoint(maximum.Width, maximum.Height);
             Marshal.StructureToPtr(limits, lParam, false);
@@ -168,7 +172,7 @@ public sealed class WindowSizing : IDisposable
             var work = GetWorkArea(bounds);
             // Corner motion is measured from the initial mouse-down rectangle. Comparing it with
             // the preceding constrained frame feeds the correction back and alternates axes.
-            bounds = ConstrainSizing(bounds, (int)wParam.ToInt64(), work, _minimumScale,
+            bounds = ConstrainSizing(bounds, (int)wParam.ToInt64(), work, MinimumScale(work),
                 _interactiveResize ? _resizeOriginSize : _preferredSize);
             RememberSize(new PixelSize(bounds.Width, bounds.Height));
             Marshal.StructureToPtr(bounds, lParam, false);
@@ -191,7 +195,7 @@ public sealed class WindowSizing : IDisposable
                 var top = (position.Flags & SwpNoMove) == 0 ? position.Y : current.Top;
                 var proposed = new NativeRect(left, top, left + position.Width, top + position.Height);
                 var work = GetWorkArea(proposed);
-                var size = FitSize(RequestedScale(proposed, 8, _preferredSize), work, _minimumScale);
+                var size = FitSize(RequestedScale(proposed, 8, _preferredSize), work, MinimumScale(work));
                 var fitted = PlaceWithinWorkArea(left, top, size, work);
                 position.X = fitted.Left; position.Y = fitted.Top;
                 position.Width = size.Width; position.Height = size.Height;
@@ -230,12 +234,13 @@ public sealed class WindowSizing : IDisposable
         if (_source == null || _disposed || _window.WindowState == WindowState.Minimized) return;
         var current = suggested ?? CurrentBounds();
         var work = GetWorkArea(current);
-        var size = FitSize((desiredHeight > 0 ? desiredHeight : DefaultHeightPixels)
-            / (double)DefaultHeightPixels, work, _minimumScale);
+        var dpi = GetDpiForWindow(_source.Handle);
+        var size = desiredHeight > 0
+            ? FitSize(desiredHeight / (double)DefaultHeightPixels, work, MinimumScale(work))
+            : StartupSize(work, dpi);
         var left = center ? work.Left + (work.Width - size.Width) / 2 : current.Left;
         var top = center ? work.Top + (work.Height - size.Height) / 2 : current.Top;
         var fitted = PlaceWithinWorkArea(left, top, size, work);
-        var dpi = GetDpiForWindow(_source.Handle);
         var scale = dpi > 0 ? dpi / 96d : 1d;
         _applyingBounds = true;
         try
@@ -249,11 +254,30 @@ public sealed class WindowSizing : IDisposable
         finally { _applyingBounds = false; }
     }
 
-    internal static PixelSize FitSize(double requestedScale, NativeRect work, double minimumScale)
+    private double MinimumScale(NativeRect work) => _minimumScale
+        * StartupSize(work, _source != null ? GetDpiForWindow(_source.Handle) : ReferenceDpi).Height / DefaultHeightPixels;
+
+    internal static PixelSize StartupSize(NativeRect work, uint dpi)
+    {
+        var available = AvailableSize(work);
+        // 跟随用户的系统缩放，再为小屏窗口四周保留空间。
+        var scale = Math.Min((dpi > 0 ? dpi : ReferenceDpi) / (double)ReferenceDpi,
+            StartupWorkAreaFraction * Math.Min(available.Width / (double)DefaultWidthPixels,
+                available.Height / (double)DefaultHeightPixels));
+        return FitAvailableSize(scale, available.Width, available.Height, 0);
+    }
+
+    private static PixelSize AvailableSize(NativeRect work)
     {
         var availableWidth = Math.Max(1, work.Width - Math.Min(WorkAreaInsetPixels * 2, Math.Max(0, work.Width - 1)));
         var availableHeight = Math.Max(1, work.Height - Math.Min(WorkAreaInsetPixels * 2, Math.Max(0, work.Height - 1)));
-        return FitAvailableSize(requestedScale, availableWidth, availableHeight, minimumScale);
+        return new PixelSize(availableWidth, availableHeight);
+    }
+
+    internal static PixelSize FitSize(double requestedScale, NativeRect work, double minimumScale)
+    {
+        var available = AvailableSize(work);
+        return FitAvailableSize(requestedScale, available.Width, available.Height, minimumScale);
     }
 
     private static PixelSize FitAvailableSize(double requestedScale, double availableWidth,

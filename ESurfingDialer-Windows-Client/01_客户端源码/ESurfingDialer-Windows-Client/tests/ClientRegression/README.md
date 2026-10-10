@@ -25,9 +25,9 @@ dotnet build tests/ClientRegression/ClientRegression.csproj --no-restore -c Rele
 dotnet run --project tests/ClientRegression/ClientRegression.csproj --no-build --no-restore -c Release -- artifacts/pen-ui-check-new --ui-only
 ```
 
-输出目录必须是全新目录。使用独立账户夹具和浏览器替身，检查449×912物理尺寸、拖动/最小尺寸/后台恢复、最大化禁用、无标题栏按钮、导航固定、上下渐隐与键盘焦点可达、后台提示保存、账户单层遮罩及圆角像素、内嵌字体；不写用户配置或系统自启。当前123项UI检查通过。`continuous-resize.json`记录八边/角640次连续尺寸更新，核对增长/缩小方向、比例及拖动期间无原生圆角重设。`compact-*.png`是真实窗口客户区，含设置入口获得焦点后的无外框截图；`pen-*.png`是449×912稿件对照。只有`pen-home.png`暂用原稿曲线和账户文字，截图后立即恢复，不用于产品运行。
+输出目录必须是全新目录。使用独立账户夹具和浏览器替身，检查按实际显示器DPI/工作区适配的首开尺寸、比例与边界、拖动/最小尺寸/后台恢复、最大化禁用、无标题栏按钮、导航固定、上下渐隐与键盘焦点可达、后台提示保存、账户单层遮罩及圆角像素、内嵌字体；不写用户配置或系统自启。10-10适配后191项UI检查及304项普通回归通过。`continuous-resize.json`记录八边/角640次连续尺寸更新，核对增长/缩小方向、比例及拖动期间无原生圆角重设。`compact-*.png`是真实窗口客户区，含设置入口获得焦点后的无外框截图；`pen-*.png`是449×912稿件对照。只有`pen-home.png`暂用原稿曲线和账户文字，截图后立即恢复，不用于产品运行。
 
-`window-metrics.json` 保存实际 HWND 外框、客户区、DPI 和画布尺寸。最新实机为 120 DPI（125%）；其他缩放比例的尺寸运算有离线检查，跨 DPI 显示器的实际拖动仍需验收。
+`startup-size.json` 保存实际工作区、DPI、期望与实际启动尺寸；`window-metrics.json` 保存 HWND 外框、客户区、DPI 和画布尺寸。以125% DPI下449×912为舒适基准，首开跟随系统缩放并限制为扣除边缘余量后工作区的90%，最小拖动尺寸为适配首开尺寸的80%。当前实机工作区2560×1380、120 DPI，仍为449×912。67项新增适配检查覆盖低分辨率、96–288 DPI、窄工作区和副屏偏移；这些是离线运算，跨DPI显示器的实际拖动仍需验收。实际窗口断言读取所在显示器工作区，不再固定要求所有屏幕均为449×912。
 
 字体维护使用现有 Python 和 fontTools：`python scripts/Update-UiFonts.py --source 本地NotoSansSC可变字体路径`。仅在新目录生成待审阅字体，默认 `artifacts/fonts-rebuild`，不会覆盖正式字体、联网下载或自动安装依赖；参数见 `--help`。正式采用前核对覆盖、许可和 WPF 实际字重。
 
@@ -55,3 +55,5 @@ dotnet run --project tests/ClientRegression/ClientRegression.csproj --no-build -
 - 新增测试覆盖密码失败、状态映射、账户事务、异常报告、进程所有权以及日志容量/轮转。内部故意失败模式由回归自动调用，正常看到其失败日志不代表父回归失败。
 
 资源检查的句柄趋势比较两个等量循环批次，先完成包含恢复的预热并让 Dispatcher 消息正常运行；不以一次较冷的样本断言泄漏。真实连接、切网/休眠、72 小时与 7–14 天验收仍需现场。
+
+正式版本的统一入口为 `pwsh -NoProfile -File scripts/Build-Release.ps1 -Offline`，复用相同门禁，并新增发布副本的 `--ui-only` 检查。v2.4 文件版本为2.4.0.0，发布目录默认 `dist/v2.4`；门禁成功只表示可交付，GitHub 发布需按用户授权执行。

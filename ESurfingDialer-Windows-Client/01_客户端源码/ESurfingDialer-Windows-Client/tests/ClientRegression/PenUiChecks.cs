@@ -309,17 +309,27 @@ internal static partial class Program
             throw new InvalidOperationException("无法读取测试窗口尺寸。");
         var frameWidth = initial.Right - initial.Left - initialClient.Right;
         var frameHeight = initial.Bottom - initial.Top - initialClient.Bottom;
+        var work = UiWorkArea(handle);
+        var requestedWidth = (int)Math.Round((initial.Right - initial.Left) * 1.07);
+        var requestedHeight = (int)Math.Round((initial.Bottom - initial.Top) * 0.82);
+        var centerY = (initial.Top + initial.Bottom) / 2d;
+        var horizontalScale = Math.Min(requestedWidth / 449d,
+            Math.Min(Math.Min(work.Right - initial.Left, work.Right - work.Left - 24) / 449d,
+                Math.Min(work.Bottom - work.Top - 24,
+                    2 * Math.Min(centerY - work.Top, work.Bottom - centerY)) / 912d));
         var memory = Marshal.AllocHGlobal(Marshal.SizeOf<UiRect>());
         try
         {
             var proposed = initial;
-            proposed.Right = proposed.Left + 480;
+            proposed.Right = proposed.Left + requestedWidth;
             Marshal.StructureToPtr(proposed, memory, false);
             UiSendMessage(handle, 0x0214, (IntPtr)2, memory); // WM_SIZING，拖动右侧边框。
             proposed = Marshal.PtrToStructure<UiRect>(memory);
             var width = proposed.Right - proposed.Left;
             var height = proposed.Bottom - proposed.Top;
-            Check(width == 480 && Math.Abs(height - width * 912.0 / 449) <= 1,
+            Check(width == (int)Math.Round(449 * horizontalScale) && height == (int)Math.Round(912 * horizontalScale)
+                && width > initial.Right - initial.Left
+                && height <= work.Bottom - work.Top - 24 && Math.Abs(height - width * 912.0 / 449) <= 1.1,
                 "Horizontal drag preserves the approved 449 by 912 window preview ratio");
             Check(UiSetWindowPos(handle, IntPtr.Zero, proposed.Left, proposed.Top, width, height, 0x0014),
                 "Proportional resize applies to the actual shown HWND");
@@ -360,12 +370,12 @@ internal static partial class Program
             CompactSettingsChecks(window);
             metrics.Add(CaptureActualWindow(window, output, "minimum-settings"));
             proposed = initial;
-            proposed.Bottom = proposed.Top + 740;
+            proposed.Bottom = proposed.Top + requestedHeight;
             Marshal.StructureToPtr(proposed, memory, false);
             UiSendMessage(handle, 0x0214, (IntPtr)6, memory); // WM_SIZING，拖动下侧边框。
             proposed = Marshal.PtrToStructure<UiRect>(memory);
-            Check(proposed.Bottom - proposed.Top == 740 &&
-                Math.Abs((proposed.Right - proposed.Left) - 740 * 449.0 / 912) <= 1,
+            Check(proposed.Bottom - proposed.Top == requestedHeight &&
+                Math.Abs((proposed.Right - proposed.Left) - requestedHeight * 449.0 / 912) <= 1,
                 "Vertical drag preserves the approved window preview ratio");
         }
         finally
@@ -526,6 +536,7 @@ internal static partial class Program
 
     private static void UiOnlyChecks(string[] args)
     {
+        StartupSizingMathChecks();
         var output = Path.GetFullPath(args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? "artifacts/pen-ui-preview");
         Directory.CreateDirectory(output);
         var isolatedHome = Path.Combine(output, "preview-data");
@@ -568,10 +579,28 @@ internal static partial class Program
             ((DispatcherTimer)typeof(MainWindow).GetField("_speedTimer", UiFlags)!.GetValue(window)!).Stop();
             DrainUiQueue();
             var handle = new WindowInteropHelper(window).Handle;
-            Check(UiGetWindowRect(handle, out var outer) && UiGetClientRect(handle, out var client)
-                && outer.Bottom - outer.Top == 912 && outer.Right - outer.Left == 449
-                && client.Right == 449 && client.Bottom == 912,
-                "First visible frameless window is exactly 449 by 912 physical pixels at the current DPI");
+            var startupWork = UiWorkArea(handle);
+            var startupDpi = UiGetDpiForWindow(handle);
+            var startupScale = Math.Min((startupDpi > 0 ? startupDpi : 120) / 120d,
+                0.9 * Math.Min((startupWork.Right - startupWork.Left - 24) / 449d,
+                    (startupWork.Bottom - startupWork.Top - 24) / 912d));
+            var expectedWidth = Math.Max(1, (int)Math.Round(449 * startupScale));
+            var expectedHeight = Math.Max(1, (int)Math.Round(912 * startupScale));
+            var outerRead = UiGetWindowRect(handle, out var outer);
+            var clientRead = UiGetClientRect(handle, out var client);
+            Check(outerRead && clientRead
+                && outer.Bottom - outer.Top == expectedHeight && outer.Right - outer.Left == expectedWidth
+                && client.Right == expectedWidth && client.Bottom == expectedHeight,
+                "First visible frameless window adapts to its actual work area and DPI");
+            Check(Math.Abs(client.Right - client.Bottom * 449d / 912) <= 0.8
+                && outer.Left >= startupWork.Left + 12 && outer.Top >= startupWork.Top + 12
+                && outer.Right <= startupWork.Right - 12 && outer.Bottom <= startupWork.Bottom - 12,
+                "Adaptive startup retains the preview ratio and stays inside the work area with margins");
+            File.WriteAllText(Path.Combine(output, "startup-size.json"), JsonSerializer.Serialize(new {
+                Dpi = startupDpi, WorkArea = new { startupWork.Left, startupWork.Top, startupWork.Right, startupWork.Bottom },
+                Expected = new { Width = expectedWidth, Height = expectedHeight },
+                Actual = new { Width = client.Right, Height = client.Bottom }
+            }, new JsonSerializerOptions { WriteIndented = true }));
             FixedCanvasScalingChecks(window);
             var metrics = new List<object> { CaptureActualWindow(window, output, "compact-home") };
             HomeGlyphBoundsChecks(window);
@@ -669,6 +698,24 @@ internal static partial class Program
 
     [StructLayout(LayoutKind.Sequential)]
     private struct UiRect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UiMonitorInfo { public int Size; public UiRect Monitor, Work; public uint Flags; }
+
+    private static UiRect UiWorkArea(IntPtr handle)
+    {
+        var info = new UiMonitorInfo { Size = Marshal.SizeOf<UiMonitorInfo>() };
+        if (!UiGetMonitorInfo(UiMonitorFromWindow(handle, 2), ref info))
+            throw new InvalidOperationException("无法读取测试窗口所在显示器的工作区。");
+        return info.Work;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "MonitorFromWindow")]
+    private static extern IntPtr UiMonitorFromWindow(IntPtr window, uint flags);
+
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UiGetMonitorInfo(IntPtr monitor, ref UiMonitorInfo info);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowRect", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

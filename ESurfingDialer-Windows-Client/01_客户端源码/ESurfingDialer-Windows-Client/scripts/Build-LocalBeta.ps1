@@ -4,7 +4,8 @@ param(
     [string]$DeliveryDirectory,
     [string]$Jdk17 = 'D:\Java\JDK17',
     [string]$Jdk21 = 'D:\Java\JDK21',
-    [switch]$Offline
+    [switch]$Offline,
+    [switch]$Release
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,7 +15,9 @@ $repository = [IO.Path]::GetFullPath((Join-Path $sourceRoot '../../..'))
 [xml]$project = Get-Content -LiteralPath (Join-Path $sourceRoot 'app/ESurfingDialerLite/ESurfingDialerLite.csproj')
 $version = [string]$project.Project.PropertyGroup.InformationalVersion
 $fileVersion = [string]$project.Project.PropertyGroup.FileVersion
-if ($version -notmatch '^[0-9]+\.[0-9]+beta\.[0-9]+$') { throw '此入口只接受本地beta版本。' }
+if ($Release) {
+    if ($version -notmatch '^[0-9]+\.[0-9]+$') { throw '正式交付入口需要主版本.次版本格式。' }
+} elseif ($version -notmatch '^[0-9]+\.[0-9]+beta\.[0-9]+$') { throw '正式版本请使用 Build-Release.ps1。' }
 $runId = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
 $output = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else { Join-Path $sourceRoot "dist/v$version" }
 $validation = if ($ValidationDirectory) { [IO.Path]::GetFullPath($ValidationDirectory) } else { Join-Path $sourceRoot "artifacts/local-beta-$version-$runId" }
@@ -150,6 +153,7 @@ try {
     Invoke-Logged (Join-Path $probe 'ClientRegression.exe') @((Join-Path $validation 'client-regression'), '--core', '--stress') 'client-regression.log'
     $clientResult = Get-Content -LiteralPath (Join-Path $validation 'client-regression/result.json') -Raw | ConvertFrom-Json
     if (-not $clientResult.Passed -or -not $clientResult.Core -or -not $clientResult.Stress -or $clientResult.Checks -lt 188) { throw '包内客户端完整回归未通过。' }
+    Invoke-Logged (Join-Path $probe 'ClientRegression.exe') @((Join-Path $validation 'ui-regression'), '--ui-only') 'ui-regression.log'
     Invoke-Logged $shell @('-NoProfile', '-File', (Join-Path $sourceRoot 'tests/ClientRegression/Test-PublishedStartup.ps1'), '-PublishedDirectory', $published, '-OutputDirectory', (Join-Path $validation 'exe-startup')) 'exe-startup.log'
     $startup = Get-Content -LiteralPath (Join-Path $validation 'exe-startup/result.json') -Raw | ConvertFrom-Json
     if (-not $startup.Passed -or -not $startup.InputIdle -or -not $startup.WpfWindowReady -or -not $startup.CleanupSucceeded -or -not $startup.ConfigurationUnchanged) { throw 'EXE入口就绪或清理门禁未通过。' }
@@ -183,8 +187,8 @@ try {
     finally { $sourceArchive.Dispose() }
     $manifest = [ordered]@{
         Product = 'ESurfingDialer Windows'; Version = $version; FileVersion = $fileVersion
-        Distribution = 'local-test-only'; Pushed = $false; Released = $false
-        BuildHead = $buildHead; Branch = $branch; BuildHadUncommittedChanges = $true
+        Distribution = $(if ($Release) { 'release-candidate' } else { 'local-test-only' }); Pushed = $false; Released = $false
+        BuildHead = $buildHead; Branch = $branch; BuildHadUncommittedChanges = [bool](git status --porcelain -- app core scripts installer resources tests)
         SourceInputsIncludeUntracked = $true; SourceInputCount = $inputs.Count
         SourceArchiveSha256 = Hash (Join-Path $delivery 'SOURCE-INPUTS.zip')
         Installer = [ordered]@{ File = [IO.Path]::GetFileName($installer); Bytes = (Get-Item -LiteralPath $installer).Length; Sha256 = Hash $installer }
@@ -204,7 +208,7 @@ try {
         "$(Hash $_.FullName)  $([IO.Path]::GetRelativePath($delivery, $_.FullName).Replace('\', '/'))"
     } | Set-Content -LiteralPath (Join-Path $delivery 'SHA256SUMS.txt') -Encoding utf8
     Save-Json ([ordered]@{ Passed = $true; Version = $version; DeliveryDirectory = $delivery; InstallerSha256 = $manifest.Installer.Sha256; CompletedAtUtc = [DateTimeOffset]::UtcNow }) (Join-Path $validation 'result.json')
-    Write-Host "本地beta交付完成：$delivery"
+    Write-Host "验证交付完成：$delivery"
 }
 catch {
     if (Test-Path -LiteralPath $validation) { Save-Json ([ordered]@{ Passed = $false; Failure = $_.Exception.Message; CompletedAtUtc = [DateTimeOffset]::UtcNow }) (Join-Path $validation 'failure.json') }

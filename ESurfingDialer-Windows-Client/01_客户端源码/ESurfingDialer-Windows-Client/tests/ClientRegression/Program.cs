@@ -14,9 +14,55 @@ internal static partial class Program
     [STAThread]
     private static int Main(string[] args) => RunHarness(args);
 
+    private static void StartupSizingMathChecks()
+    {
+        var sizing = typeof(WindowSizing);
+        var rectType = sizing.GetNestedType("NativeRect", BindingFlags.NonPublic)!;
+        var pixelType = sizing.GetNestedType("PixelSize", BindingFlags.NonPublic)!;
+        var startup = sizing.GetMethod("StartupSize", BindingFlags.Static | BindingFlags.NonPublic)!;
+        (int Width, int Height) Size(int width, int height, uint dpi, int left = 0, int top = 0)
+        {
+            var work = Activator.CreateInstance(rectType, left, top, left + width, top + height)!;
+            var result = startup.Invoke(null, new[] { work, (object)dpi })!;
+            return ((int)pixelType.GetProperty("Width")!.GetValue(result)!,
+                (int)pixelType.GetProperty("Height")!.GetValue(result)!);
+        }
+        foreach (var sample in new[] {
+            (Width: 1366, Height: 728, Dpi: 96u, Expected: (312, 634)),
+            (Width: 1920, Height: 1040, Dpi: 96u, Expected: (359, 730)),
+            (Width: 2560, Height: 1380, Dpi: 120u, Expected: (449, 912)),
+            (Width: 3840, Height: 2080, Dpi: 192u, Expected: (718, 1459)),
+            (Width: 400, Height: 900, Dpi: 120u, Expected: (338, 687)) })
+            Check(Size(sample.Width, sample.Height, sample.Dpi) == sample.Expected,
+                "Adaptive startup has the approved size for work area and DPI " + sample);
+
+        foreach (var area in new[] { (Width: 1366, Height: 728), (Width: 1920, Height: 1040),
+            (Width: 2560, Height: 1380), (Width: 3840, Height: 2080), (Width: 400, Height: 900),
+            (Width: 800, Height: 600) })
+        {
+            var previous = (Width: 0, Height: 0);
+            foreach (var dpi in new uint[] { 96, 120, 144, 192, 288 })
+            {
+                var actual = Size(area.Width, area.Height, dpi);
+                Check(actual.Width > 0 && actual.Height > 0
+                    && Math.Abs(actual.Width - actual.Height * 449d / 912) <= 0.8
+                    && actual.Width <= (area.Width - 24) * 0.9 + 0.5
+                    && actual.Height <= (area.Height - 24) * 0.9 + 0.5,
+                    "Adaptive startup preserves the preview ratio and leaves space around the work area " + area + " DPI=" + dpi);
+                Check(actual.Width >= previous.Width && actual.Height >= previous.Height
+                    && actual == Size(area.Width, area.Height, dpi, -2000, 300),
+                    "Higher DPI never reduces startup size and secondary-monitor offsets do not change it " + area + " DPI=" + dpi);
+                previous = actual;
+            }
+        }
+        Check(Size(2560, 1380, 0) == (449, 912), "An unavailable DPI uses the approved reference size");
+        Check(Size(1, 1, 120) == (1, 1), "A degenerate work area still produces positive bounded startup dimensions");
+    }
+
     // 不同工作区只验证尺寸和锚点；实际HWND、DPI、拖动与窗口按钮另由UI检查验证。
     private static void WindowSizingMathChecks()
     {
+        StartupSizingMathChecks();
         var sizing = typeof(WindowSizing);
         var pixelType = sizing.GetNestedType("PixelSize", BindingFlags.NonPublic)!;
         var rectType = sizing.GetNestedType("NativeRect", BindingFlags.NonPublic)!;
@@ -41,7 +87,7 @@ internal static partial class Program
             var normal = Fit(1, area);
             Check(PreviewRatio(normal) && normal.Height <= monitor.Height - 24
                 && (monitor.Height < 936 || normal == (449, 912)),
-                "First-open size is 449 by 912 when it fits and remains proportional on smaller work areas " + monitor);
+                "A requested 449 by 912 resize remains proportional and fits smaller work areas " + monitor);
             var enlarged = Fit(1.2, area);
             Check(PreviewRatio(enlarged) && enlarged.Height >= normal.Height && enlarged.Height <= monitor.Height - 24,
                 "Enlargement remains proportional and stays inside the work area " + monitor);
