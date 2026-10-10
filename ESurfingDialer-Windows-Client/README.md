@@ -11,7 +11,7 @@
 
 - 最新安装包：请前往统一仓库的 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 页面。
 
-当前已发布Windows版本仍为v2.3beta；最新本地[beta3 UA2104修复包](../项目文档/WINDOWS-BOOTSTRAP-UA-FIX-2026-10-08.md)保留既有修复并修正初始化空响应通道，327/63/189项及实际EXE就绪/清理通过，原ARM64库无账号真实初始化/票据响应解析通过，未上传或发布。10-09真实登录、首次确认心跳及外网访问已通过；连续心跳、恢复和长期稳定待验。安装与账户/托盘操作见[中文使用说明](../项目文档/WINDOWS-USER-GUIDE.md)。
+当前统一发布版本为 **v2.4**，附件为 `ESurfingDialer-Windows-v2.4-Setup.exe`，支持 Windows x64，内置 .NET 10 与 Java 21。认证通道、门户与恢复修复及新版 UI 均纳入本次包，版本/验证见[v2.4说明](../项目文档/V2.4-RELEASE.md)。真实恢复、安装矩阵与长期稳定仍待验收；账户与托盘操作见[中文使用说明](../项目文档/WINDOWS-USER-GUIDE.md)。
 
 ## 适用场景
 

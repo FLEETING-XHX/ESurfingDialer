@@ -1,14 +1,14 @@
 #define MyAppName "ESurfingDialer Lite"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.3beta.3"
+  #define MyAppVersion "2.4"
 #endif
 #ifndef MyAppFileVersion
-  #define MyAppFileVersion "2.3.0.3"
+  #define MyAppFileVersion "2.4.0.0"
 #endif
 #define MyAppPublisher "ESurfingDialer Lite"
 #define MyAppExeName "ESurfingDialerLite.exe"
 #ifndef SourceDir
-  #define SourceDir "..\dist\v2.3beta.3\ESurfingDialerLite"
+  #define SourceDir "..\dist\v2.4\ESurfingDialerLite"
 #endif
 
 [Setup]

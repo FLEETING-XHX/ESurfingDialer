@@ -36,3 +36,7 @@ Desktop.ini
 # Beta packages stay local until the coordinated release is authorized.
 /ESurfingDialer-Docker/00_最终部署包/*beta*/
 /ESurfingDialer-Windows-Client/00_最终安装包/*beta*/
+
+# v2.4 delivery evidence and binaries stay local; product assets go to Releases.
+/ESurfingDialer-Windows-Client/00_最终安装包/Windows客户端_v2.4/
+/ESurfingDialer-Docker/00_最终部署包/Docker_v2.4/
