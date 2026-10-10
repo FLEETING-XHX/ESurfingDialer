@@ -1,164 +1,357 @@
 <Window x:Class="ESurfingDialerLite.MainWindow"
- xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="天翼校园 ESurfingDialer" Width="500" Height="839" MinWidth="420" MinHeight="700"
- FontFamily="Noto Sans SC, Microsoft YaHei UI" Background="#F6F5FA" Closing="Window_Closing" PreviewKeyDown="Window_PreviewKeyDown"
- UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType">
- <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Theme.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
- <Viewbox Stretch="Uniform">
-  <Grid x:Name="DesignRoot" Width="484" Height="800" Background="{StaticResource Surface}" ClipToBounds="True">
-   <Grid x:Name="MainContent" Margin="20">
-    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="24"/><RowDefinition Height="66"/></Grid.RowDefinitions>
-    <Grid>
-     <Grid x:Name="HomePage">
-      <StackPanel>
-       <Grid Height="45" Margin="0,0,0,21">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <Border x:Name="BrandMark" Grid.Column="0" Width="32" Height="32" Background="White" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="9" VerticalAlignment="Top">
-         <Grid Width="22" Height="22" VerticalAlignment="Center" HorizontalAlignment="Center">
-          <Border x:Name="BrandSignalBar1" Width="4" Height="7" Background="{StaticResource Offline}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-          <Border x:Name="BrandSignalBar2" Width="4" Height="13" Background="{StaticResource Offline}" CornerRadius="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-          <Border x:Name="BrandSignalBar3" Width="4" Height="19" Background="{StaticResource Offline}" CornerRadius="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-         </Grid>
-        </Border>
-        <StackPanel Grid.Column="1">
-         <TextBlock Text="天翼校园" FontSize="25" FontWeight="Bold" VerticalAlignment="Top"/>
-         <TextBlock x:Name="ProductSubtitle" Text="ESurfingDialer" Style="{StaticResource Caption}" Margin="1,1,0,0" VerticalAlignment="Top"/>
-        </StackPanel>
-       </Grid>
-       <Border x:Name="CurrentAccountCard" Style="{StaticResource Card}" CornerRadius="15" Padding="17,0" Height="64" Margin="0,0,0,16" AutomationProperties.Name="当前校园网账户">
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-         <ContentControl Style="{StaticResource PenIcon}" Content="{StaticResource PenAccountIcon}" Foreground="{StaticResource Coral}" Width="22" Height="22" HorizontalAlignment="Left"/>
-         <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="当前校园网账户" Style="{StaticResource Caption}" /><TextBlock x:Name="AccountSummaryText" Style="{StaticResource CardValueText}" Text="尚未配置账户" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/></StackPanel>
-        </Grid>
-       </Border>
-       <Grid Height="98" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <Button x:Name="CampusConnectionButton" Style="{StaticResource CardButton}" Click="CampusConnectionButton_Click" AutomationProperties.Name="连接或断开校园网">
-         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/></Grid.ColumnDefinitions>
-          <Border Width="48" Height="48" Background="{StaticResource SoftGreen}" CornerRadius="14"><ContentControl x:Name="CampusIconControl" Style="{StaticResource PenIcon}" Content="{StaticResource PenCampusIcon}" Foreground="{StaticResource Green}" Width="24" Height="24"/></Border>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0"><TextBlock Text="校园网" Style="{StaticResource Caption}" /><TextBlock x:Name="CampusStatusText" Style="{StaticResource CardValueText}" Text="未连接" FontSize="16" FontWeight="Bold" Margin="0,3,0,0"/></StackPanel>
-          <Ellipse x:Name="CampusStatusDot" Grid.Column="2" Width="9" Height="9" Fill="{StaticResource Offline}"/>
-         </Grid>
-        </Button>
-        <Button x:Name="AccountManagementButton" Grid.Column="2" Style="{StaticResource CardButton}" Click="ManageAccountsButton_Click" AutomationProperties.Name="账户管理">
-         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/></Grid.ColumnDefinitions>
-          <Border Width="48" Height="48" Background="{StaticResource SoftCoral}" CornerRadius="14"><ContentControl Style="{StaticResource PenIcon}" Content="{StaticResource PenUserIcon}" Foreground="{StaticResource Coral}" Width="24" Height="24"/></Border>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0"><TextBlock Text="账户管理" Style="{StaticResource Caption}" /><Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,3,0,0"><TextBlock Text="编辑当前账户" FontSize="15" FontWeight="Bold"/></Viewbox></StackPanel>
-          <ContentControl Style="{StaticResource PenIcon}" Content="{StaticResource PenChevronIcon}" Grid.Column="2" Width="18" Height="18" Foreground="{StaticResource Muted}"/>
-         </Grid>
-        </Button>
-       </Grid>
-       <Border x:Name="AuthenticationCard" Style="{StaticResource Card}" Height="94" Padding="15,8" Margin="0,0,0,14">
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/><ColumnDefinition Width="32"/></Grid.ColumnDefinitions>
-         <Border Background="{StaticResource SoftCoral}" CornerRadius="14" Width="48" Height="48"><ContentControl Style="{StaticResource PenIcon}" Content="{StaticResource PenShieldIcon}" Foreground="{StaticResource Coral}" Width="24" Height="24"/></Border>
-         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0"><TextBlock Text="认证链路" Style="{StaticResource Caption}" /><TextBlock x:Name="AuthenticationTitleText" Style="{StaticResource CardValueText}" Text="天翼校园认证服务" FontSize="16" FontWeight="Bold" Margin="0,2,0,0"/><TextBlock Text="未连接" Style="{StaticResource Caption}" x:Name="HomeStatusText" Margin="0,3,0,0"/></StackPanel>
-         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" ToolTip="校园网认证状态">
-          <Border x:Name="SignalBar1" Width="6" Height="10" CornerRadius="3" Background="{StaticResource Offline}" VerticalAlignment="Bottom" Margin="0,0,3,0"/>
-          <Border x:Name="SignalBar2" Width="6" Height="18" CornerRadius="3" Background="{StaticResource Offline}" VerticalAlignment="Bottom" Margin="0,0,3,0"/>
-          <Border x:Name="SignalBar3" Width="6" Height="26" CornerRadius="3" Background="{StaticResource Offline}" VerticalAlignment="Bottom"/>
-         </StackPanel>
-        </Grid>
-       </Border>
-       <Border Style="{StaticResource Card}" Height="164">
-        <Grid>
-         <TextBlock Text="网络状态" FontSize="18" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="15,14,0,0"/>
-         <Border Background="{StaticResource SoftGreen}" CornerRadius="12" Width="86" Height="24" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="114,13,0,0"><TextBlock x:Name="SpeedStatusText" Text="等待连接" Foreground="{StaticResource Green}" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-         <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Width="178" Margin="15,51,0,0"><TextBlock Text="下载" Style="{StaticResource Caption}" FontSize="12"/><TextBlock x:Name="DownloadSpeedText" Text="-- KB/s" Foreground="{StaticResource Green}" FontSize="14" FontWeight="Bold" Margin="0,3,0,0"/></StackPanel>
-         <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Width="178" Margin="247,51,0,0"><TextBlock Text="上传" Style="{StaticResource Caption}" FontSize="12"/><TextBlock x:Name="UploadSpeedText" Text="-- KB/s" Foreground="{StaticResource Coral}" FontSize="14" FontWeight="Bold" Margin="0,3,0,0"/></StackPanel>
-         <Canvas x:Name="SpeedChart" Width="412" Height="28" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="15,114,0,0" ClipToBounds="True" ToolTip="本机活动物理网卡总流量：绿色下载，珊瑚红上传"><Polyline x:Name="DownloadLine" Stroke="{StaticResource Green}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Polyline x:Name="UploadLine" Stroke="{StaticResource Coral}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas>
-        </Grid>
-       </Border>
-      </StackPanel>
-     </Grid>
-     <Grid x:Name="LogsPage" Visibility="Collapsed">
-      <Grid.RowDefinitions><RowDefinition Height="64"/><RowDefinition/></Grid.RowDefinitions>
-      <TextBlock Text="日志" FontSize="26" FontWeight="SemiBold"/>
-      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-       <ItemsControl x:Name="SummaryList"><ItemsControl.ItemTemplate><DataTemplate>
-        <Border Style="{StaticResource Card}" MinHeight="82" Margin="0,0,0,14" Padding="18,12"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-         <Ellipse Fill="{Binding Color}" Width="12" Height="12" VerticalAlignment="Top" Margin="0,8,0,0"/>
-         <StackPanel Grid.Column="1"><TextBlock Text="{Binding Time}" Style="{StaticResource Caption}" /><TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Margin="0,2,0,0"/><TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,5,0,0"/></StackPanel>
-        </Grid></Border>
-       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-      </ScrollViewer>
-     </Grid>
-     <Grid x:Name="SettingsPage" Visibility="Collapsed">
-      <StackPanel>
-       <Grid Height="68"><TextBlock Text="设置" FontSize="26" FontWeight="SemiBold"/><TextBlock Text="管理连接行为和启动偏好" Style="{StaticResource Caption}" Margin="0,36,0,0"/></Grid>
-       <TextBlock Text="启动设置" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Height="24"/>
-       <Border Style="{StaticResource Card}" Padding="32,12" Margin="0,0,0,24">
-        <StackPanel>
-         <Grid Height="52" ><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="开机自启" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="系统启动后自动运行天翼校园" Style="{StaticResource Caption}" Margin="0,4,0,0" FontSize="10"/></StackPanel><CheckBox x:Name="AutoStartCheckBox" Grid.Column="1" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="开机自启"/></Grid>
-         <Border x:Name="MinimizeSettingRow" Background="{StaticResource SoftGreen}" CornerRadius="12" Margin="-16,6,-16,6" Padding="16,0" Visibility="Collapsed">
-          <Grid Height="48" ><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="启动后最小化到任务栏后台" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="开机启动时隐藏窗口，保留托盘图标" Style="{StaticResource Caption}" Margin="0,4,0,0" FontSize="10"/></StackPanel><CheckBox x:Name="StartMinimizedCheckBox" Grid.Column="1" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="启动后最小化到任务栏后台"/></Grid>
-         </Border>
-         <Grid Height="54"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="自动连接校园网" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="启动后自动尝试认证当前账户" Style="{StaticResource Caption}" Margin="0,4,0,0" FontSize="10"/></StackPanel><CheckBox x:Name="AutoConnectCheckBox" Grid.Column="1" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="自动连接校园网"/></Grid>
-        </StackPanel>
-       </Border>
-       <TextBlock Text="连接设置" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Height="24"/>
-       <Border Style="{StaticResource Card}" Height="142" Padding="32,16" Margin="0,0,0,24"><StackPanel>
-        <Grid Height="54" ><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="增强连接" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="轻量监测异常，带冷却保护" Style="{StaticResource Caption}" Margin="0,4,0,0" FontSize="10"/></StackPanel><CheckBox x:Name="EnhancedConnectionCheckBox" Grid.Column="1" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="增强连接"/></Grid>
-        <StackPanel Margin="0,16,0,0"><TextBlock Text="后台运行提示" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="连接状态通过任务栏托盘图标显示" Style="{StaticResource Caption}" Margin="0,4,0,0"/></StackPanel>
-       </StackPanel></Border>
-       <TextBlock Text="其他" Foreground="{StaticResource Muted}" FontWeight="SemiBold" Height="24"/>
-       <Border Style="{StaticResource Card}" Padding="16,4"><StackPanel>
-        <Button Height="44" Click="OpenLogsButton_Click"><Grid><TextBlock Text="查看详细日志" FontWeight="SemiBold" VerticalAlignment="Center"/><Path Style="{StaticResource Icon}" Data="{StaticResource ChevronIcon}" Width="9" Height="15" HorizontalAlignment="Right" Stroke="{StaticResource Muted}"/></Grid></Button>
-        <Button Height="48" Click="ExportLogsButton_Click"><Grid><StackPanel><TextBlock Text="导出日志" FontWeight="SemiBold"/><TextBlock Text="将详细日志和认证记录导出为 ZIP" Style="{StaticResource Caption}" FontSize="10"/></StackPanel><Border HorizontalAlignment="Right" VerticalAlignment="Center" Background="{StaticResource SoftCoral}" CornerRadius="9" Padding="12,4"><TextBlock Text="ZIP" Foreground="{StaticResource Coral}" FontSize="10"/></Border></Grid></Button>
-        <Button Height="48" Click="GitHubButton_Click"><Grid><StackPanel><TextBlock Text="GitHub 项目主页" FontWeight="SemiBold"/><TextBlock Text="查看源码、版本和使用说明" Style="{StaticResource Caption}" FontSize="10"/></StackPanel><Path Style="{StaticResource Icon}" Data="{StaticResource ChevronIcon}" Width="9" Height="15" HorizontalAlignment="Right" Stroke="{StaticResource Muted}"/></Grid></Button>
-       </StackPanel></Border>
-      </StackPanel>
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+ Title="天翼校园 ESurfingDialer" Width="449" Height="912" WindowStartupLocation="CenterScreen" ResizeMode="CanResize" WindowStyle="None"
+ FontFamily="/ESurfingDialerLite;component/Fonts/#Noto Sans SC, Microsoft YaHei UI" Closing="Window_Closing" PreviewKeyDown="Window_PreviewKeyDown"
+ UseLayoutRounding="False" SnapsToDevicePixels="False" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType" MouseLeftButtonDown="Window_MouseLeftButtonDown">
+ <Window.Resources>
+<ResourceDictionary>
+<ResourceDictionary.MergedDictionaries>
+<ResourceDictionary Source="Theme.xaml"/>
+</ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>
+</Window.Resources>
+ <Window.Style><Style TargetType="Window">
+<Setter Property="Background" Value="{StaticResource Surface}"/>
+<Style.Triggers>
+<DataTrigger Binding="{Binding Visibility, ElementName=AccountOverlay}" Value="Visible"><Setter Property="Background" Value="{StaticResource AccountViewportBackground}"/></DataTrigger>
+<DataTrigger Binding="{Binding Visibility, ElementName=DetailsOverlay}" Value="Visible"><Setter Property="Background" Value="{StaticResource DimmedSurface}"/></DataTrigger>
+</Style.Triggers>
+ </Style></Window.Style>
+ <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="5" GlassFrameThickness="0" CornerRadius="18" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
+ <Grid x:Name="ClientViewport" Background="{Binding Background, RelativeSource={RelativeSource AncestorType=Window}}">
+  <Viewbox Stretch="Uniform">
+   <Grid x:Name="DesignRoot" Width="410" Height="832.7839643653" Background="{StaticResource Surface}" ClipToBounds="True">
+    <Grid.Clip><RectangleGeometry x:Name="PageClip" Rect="0,0,410,832.7839643653" RadiusX="18" RadiusY="18"/></Grid.Clip>
+    <Grid x:Name="MainContent" Margin="16.24,21.85,16.232,0">
+     <Grid>
+      <Grid x:Name="HomePage">
+<ScrollViewer x:Name="HomeScrollViewer" VerticalContentAlignment="Top" HorizontalContentAlignment="Left" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+<Canvas Width="377.528" Height="579.025" VerticalAlignment="Top">
+<TextBlock Canvas.Left="0" Canvas.Top="0" Text="天翼校园" FontSize="25" FontWeight="Bold" />
+<TextBlock x:Name="ProductSubtitle" Canvas.Left="0.812" Canvas.Top="30.59" Text="ESurfingDialer" FontSize="11" Style="{StaticResource Caption}" />
+<Border x:Name="CurrentAccountCard" Canvas.Left="0" Canvas.Top="72.105" Width="377.528" Height="69.92" Style="{StaticResource Card}" CornerRadius="15" AutomationProperties.Name="当前校园网账户">
+<Canvas Margin="-1">
+<ContentControl Canvas.Left="18" Canvas.Top="24.96" Width="20" Height="20" Style="{StaticResource PenIcon}" Content="{StaticResource PenAccountIcon}" Foreground="{StaticResource Coral}"/>
+<TextBlock Canvas.Left="50" Canvas.Top="14.96" Text="当前校园网账户" FontSize="11" Style="{StaticResource Caption}" />
+<TextBlock x:Name="AccountSummaryText" Canvas.Left="50" Canvas.Top="32.96" Text="尚未配置账户" FontSize="15" FontWeight="Bold" Style="{StaticResource CardValueText}" Width="309.528" TextTrimming="CharacterEllipsis"/>
+</Canvas>
+</Border>
+<Button x:Name="CampusConnectionButton" Canvas.Left="0" Canvas.Top="159.505" Width="183.892" Height="107.065" Style="{StaticResource CardButton}" Padding="0" VerticalContentAlignment="Stretch" Click="CampusConnectionButton_Click" AutomationProperties.Name="连接或断开校园网">
+<Canvas Margin="-1">
+<Border Canvas.Left="12" Canvas.Top="31.5325" Width="44" Height="44" Background="{StaticResource SoftGreen}" CornerRadius="13">
+<Canvas>
+<ContentControl x:Name="CampusIconControl" Canvas.Left="12" Canvas.Top="12" Width="20" Height="20" Style="{StaticResource PenIcon}" Content="{StaticResource PenCampusIcon}" Foreground="{StaticResource Green}"/>
+</Canvas>
+</Border>
+<TextBlock Canvas.Left="64" Canvas.Top="32.5325" Text="校园网" FontSize="11" Style="{StaticResource Caption}" />
+<TextBlock x:Name="CampusStatusText" Canvas.Left="64" Canvas.Top="51.5325" Text="未连接" FontSize="16" FontWeight="Bold" Style="{StaticResource CardValueText}" Width="91.892" TextTrimming="CharacterEllipsis"/>
+<Ellipse x:Name="CampusStatusDot" Canvas.Left="163.892" Canvas.Top="49.5325" Width="8" Height="8" Fill="{StaticResource Offline}"/>
+</Canvas>
+</Button>
+<Button x:Name="AccountManagementButton" Canvas.Left="193.636" Canvas.Top="159.505" Width="183.892" Height="107.065" Style="{StaticResource CardButton}" Padding="0" VerticalContentAlignment="Stretch" Click="ManageAccountsButton_Click" AutomationProperties.Name="账户管理">
+<Canvas Margin="-1">
+<Border Canvas.Left="12" Canvas.Top="31.5325" Width="44" Height="44" Background="{StaticResource SoftCoral}" CornerRadius="13">
+<Canvas>
+<ContentControl Canvas.Left="12" Canvas.Top="12" Width="20" Height="20" Style="{StaticResource PenIcon}" Content="{StaticResource PenUserIcon}" Foreground="{StaticResource Coral}"/>
+</Canvas>
+</Border>
+<TextBlock Canvas.Left="64" Canvas.Top="34.5325" Text="账户管理" FontSize="11" Style="{StaticResource Caption}" />
+<TextBlock Canvas.Left="64" Canvas.Top="53.5325" Text="编辑当前账户" FontSize="13" FontWeight="Bold" />
+<ContentControl Canvas.Left="153.892" Canvas.Top="44.5325" Width="18" Height="18" Style="{StaticResource PenIcon}" Content="{StaticResource PenChevronIcon}" Foreground="{StaticResource Muted}"/>
+</Canvas>
+</Button>
+<Border x:Name="AuthenticationCard" Canvas.Left="0" Canvas.Top="281.865" Width="377.528" Height="102.695" Style="{StaticResource Card}" >
+<Canvas Margin="-1">
+<Border Canvas.Left="16" Canvas.Top="29.3475" Width="44" Height="44" Background="{StaticResource SoftCoral}" CornerRadius="13">
+<Canvas>
+<ContentControl Canvas.Left="12" Canvas.Top="12" Width="20" Height="20" Style="{StaticResource PenIcon}" Content="{StaticResource PenShieldIcon}" Foreground="{StaticResource Coral}"/>
+</Canvas>
+</Border>
+<TextBlock Canvas.Left="72" Canvas.Top="21.8475" Text="认证链路" FontSize="11" Style="{StaticResource Caption}" />
+<TextBlock x:Name="AuthenticationTitleText" Canvas.Left="72" Canvas.Top="39.8475" Text="天翼校园认证服务" FontSize="16" FontWeight="Bold" Style="{StaticResource CardValueText}" Width="247.528"/>
+<TextBlock x:Name="HomeStatusText" Canvas.Left="72" Canvas.Top="64.8475" Text="未连接" FontSize="11" Style="{StaticResource Caption}" />
+<Canvas Canvas.Left="331.528" Canvas.Top="35.8475" Width="30" Height="31" ToolTip="校园网认证状态">
+<Border x:Name="SignalBar1" Canvas.Left="0" Canvas.Top="20.075" Width="8" Height="10.925" CornerRadius="3" Background="{StaticResource Offline}"/>
+<Border x:Name="SignalBar2" Canvas.Left="11" Canvas.Top="11.335" Width="8" Height="19.665" CornerRadius="3" Background="{StaticResource Offline}"/>
+<Border x:Name="SignalBar3" Canvas.Left="22" Canvas.Top="2.595" Width="8" Height="28.405" CornerRadius="3" Background="{StaticResource Offline}"/>
+</Canvas>
+</Canvas>
+</Border>
+<Border x:Name="NetworkStatusCard" Canvas.Left="0" Canvas.Top="399.855" Width="377.528" Height="179.17" Style="{StaticResource Card}" >
+<Canvas Margin="-1">
+<TextBlock Canvas.Left="12.992" Canvas.Top="16.3875" Text="网络状态" FontSize="18" FontWeight="Bold" />
+<Border Canvas.Left="93.38" Canvas.Top="15.295" Width="69.832" Height="26.22" Background="#EFF9EF" CornerRadius="12">
+<TextBlock x:Name="SpeedStatusText" Text="等待连接" Foreground="{StaticResource Green}" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+<TextBlock Canvas.Left="12.992" Canvas.Top="56.81" Text="下载" FontSize="12" Foreground="{StaticResource Muted}"/>
+<TextBlock x:Name="DownloadSpeedText" Canvas.Left="12.992" Canvas.Top="76.81" Text="-- KB/s" Foreground="{StaticResource DownloadTrend}" FontSize="14" FontWeight="Bold" />
+<TextBlock Canvas.Left="201.376" Canvas.Top="56.81" Text="上传" FontSize="12" Foreground="{StaticResource Muted}"/>
+<TextBlock x:Name="UploadSpeedText" Canvas.Left="201.376" Canvas.Top="76.81" Text="-- KB/s" Foreground="{StaticResource UploadTrend}" FontSize="14" FontWeight="Bold" />
+<Canvas x:Name="SpeedChart" Canvas.Left="12.992" Canvas.Top="125.6375" Width="334.544" Height="30.59" ClipToBounds="True" ToolTip="本机活动物理网卡总流量：绿色下载，珊瑚红上传">
+<Polyline x:Name="DownloadLine" Stroke="{StaticResource DownloadTrend}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+<Polyline x:Name="UploadLine" Stroke="{StaticResource UploadTrend}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+</Canvas>
+</Canvas>
+</Border>
+</Canvas>
+</ScrollViewer>
+</Grid>
+      <Grid x:Name="LogsPage" Visibility="Collapsed">
+<Grid>
+<Grid.RowDefinitions>
+<RowDefinition Height="69.92"/>
+<RowDefinition/>
+</Grid.RowDefinitions>
+<TextBlock Text="日志" FontSize="26" FontWeight="Bold"/>
+<ScrollViewer x:Name="LogsScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" ScrollChanged="PageScrollViewer_ScrollChanged">
+<ItemsControl x:Name="SummaryList" Margin="0,0,0,193.7248329621">
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Border Style="{StaticResource Card}" BorderThickness="0" MinHeight="89.585" Margin="0,0,0,15.295">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="35.728"/>
+<ColumnDefinition/>
+</Grid.ColumnDefinitions>
+<Ellipse Fill="{Binding Color}" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14.616,21.85,0,0"/>
+<Grid Grid.Column="1" Margin="0,15.295,12,12.405">
+<Grid.RowDefinitions>
+<RowDefinition Height="18.5725"/>
+<RowDefinition Height="27.3125"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<TextBlock Text="{Binding Time}" Style="{StaticResource Caption}"/>
+<TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="15" FontWeight="Bold"/>
+<TextBlock Grid.Row="2" Text="{Binding Detail}" Style="{StaticResource Caption}" TextWrapping="Wrap"/>
+</Grid>
+</Grid>
+</Border>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+</ScrollViewer>
+</Grid>
+</Grid>
+      <Grid x:Name="SettingsPage" Visibility="Collapsed">
+<ScrollViewer x:Name="SettingsScrollViewer" Margin="-16.24,67.6377505568,-16.232,0" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly" ScrollChanged="PageScrollViewer_ScrollChanged" PreviewGotKeyboardFocus="SettingsScrollViewer_PreviewGotKeyboardFocus">
+<StackPanel x:Name="SettingsContent" Width="377.528" HorizontalAlignment="Left" Margin="16.24,6.6522494432,16.232,193.7248329621">
+<TextBlock Text="启动设置" Foreground="{StaticResource Muted}" FontSize="13" FontWeight="Bold" Height="19" Margin="0,0,0,7.22"/>
+<Border Style="{StaticResource Card}" BorderThickness="0" Margin="0,0,0,26.22">
+<StackPanel>
+<ContentControl HorizontalAlignment="Left" Margin="12.992,13.11,0,6.555">
+<Canvas Width="334.544" Height="56.81">
+<TextBlock Canvas.Left="12.992" Canvas.Top="9.8325" Text="开机自启" FontSize="15" FontWeight="Bold" />
+<TextBlock Canvas.Left="12.992" Canvas.Top="33.8675" Text="系统启动后自动运行天翼校园" FontSize="11" Style="{StaticResource Caption}" />
+<CheckBox x:Name="AutoStartCheckBox" Canvas.Left="297.192" Canvas.Top="15.295" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="开机自启"/>
+</Canvas>
+</ContentControl>
+<Border x:Name="MinimizeSettingRow" HorizontalAlignment="Left" Width="334.544" Background="{StaticResource SoftGreen}" CornerRadius="12" Margin="12.992,0,0,19.55" Visibility="Collapsed">
+<Canvas Width="334.544" Height="46">
+<TextBlock Canvas.Left="22" Canvas.Top="6" Text="启动后最小化到任务栏后台" FontSize="13" FontWeight="Bold" />
+<TextBlock Canvas.Left="22" Canvas.Top="27" Text="已开启开机自启后可用" FontSize="10" Foreground="{StaticResource Muted}"/>
+<CheckBox x:Name="StartMinimizedCheckBox" Canvas.Left="297.192" Canvas.Top="9" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="启动后最小化到任务栏后台"/>
+</Canvas>
+</Border>
+<ContentControl HorizontalAlignment="Left" Margin="12.992,0,0,13.11">
+<Canvas Width="334.544" Height="52.44">
+<TextBlock Canvas.Left="12.992" Canvas.Top="8.74" Text="自动连接校园网" FontSize="14" FontWeight="Bold" />
+<TextBlock Canvas.Left="12.992" Canvas.Top="31.6825" Text="启动后自动尝试认证当前账户" FontSize="10" Foreground="{StaticResource Muted}"/>
+<CheckBox x:Name="AutoConnectCheckBox" Canvas.Left="297.192" Canvas.Top="12.0175" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="自动连接校园网"/>
+</Canvas>
+</ContentControl>
+</StackPanel>
+</Border>
+<TextBlock Text="连接设置" Foreground="{StaticResource Muted}" FontSize="13" FontWeight="Bold" Height="19" Margin="0,0,0,7.22"/>
+<Border Style="{StaticResource Card}" BorderThickness="0" Height="155.135" Margin="0,0,0,26.22">
+<Canvas>
+<TextBlock Canvas.Left="25.984" Canvas.Top="27.3125" Text="增强连接" FontSize="15" FontWeight="Bold" />
+<TextBlock Canvas.Left="25.984" Canvas.Top="51.3475" Text="断线后自动检测并恢复认证" FontSize="11" Style="{StaticResource Caption}" />
+<CheckBox x:Name="EnhancedConnectionCheckBox" Canvas.Left="310.184" Canvas.Top="32.775" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="增强连接"/>
+<TextBlock Canvas.Left="25.984" Canvas.Top="95.0475" Text="后台运行提示" FontSize="14" FontWeight="Bold" />
+<TextBlock Canvas.Left="25.984" Canvas.Top="117.99" Text="连接状态通过任务栏图标显示" FontSize="10" Foreground="{StaticResource Muted}"/>
+<CheckBox x:Name="BackgroundTipsCheckBox" Canvas.Left="310.184" Canvas.Top="102.6025" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="后台运行提示"/>
+</Canvas>
+</Border>
+<TextBlock Text="其他" Foreground="{StaticResource Muted}" FontSize="13" FontWeight="Bold" Height="19" Margin="0,0,0,7.22"/>
+<Border Style="{StaticResource Card}" BorderThickness="0" Height="250">
+<Canvas>
+<Button x:Name="ViewLogsButton" Style="{StaticResource SettingsActionButton}" Canvas.Left="12.992" Canvas.Top="10.925" Width="334.544" Height="43.7" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Click="OpenLogsButton_Click" AutomationProperties.Name="查看详细日志">
+<Canvas>
+<TextBlock Canvas.Left="3.248" Canvas.Top="8.74" Text="查看详细日志" FontSize="14" FontWeight="Bold" />
+<TextBlock Canvas.Left="310.184" Canvas.Top="6.555" Text="›" FontSize="24" Foreground="{StaticResource Muted}"/>
+</Canvas>
+</Button>
+<Button x:Name="ExportLogsButton" Style="{StaticResource SettingsActionButton}" Canvas.Left="12.992" Canvas.Top="67.735" Width="334.544" Height="37.145" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Click="ExportLogsButton_Click" AutomationProperties.Name="导出日志">
+<Canvas>
+<TextBlock Canvas.Left="3.248" Canvas.Top="2.185" Text="导出日志" FontSize="13" FontWeight="Bold" />
+<TextBlock Canvas.Left="3.248" Canvas.Top="20.7575" Text="将详细日志和认证记录导出为 ZIP" FontSize="9" Foreground="{StaticResource Muted}"/>
+<Border Canvas.Left="293.824" Canvas.Top="4.37" Width="34" Height="26" Background="{StaticResource SoftCoral}" CornerRadius="9">
+<TextBlock Text="ZIP" Foreground="{StaticResource Coral}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+</Canvas>
+</Button>
+<Button x:Name="GitHubButton" Style="{StaticResource SettingsActionButton}" Canvas.Left="12.992" Canvas.Top="115.805" Width="334.544" Height="34.96" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Click="GitHubButton_Click" AutomationProperties.Name="GitHub 项目主页">
+<Canvas>
+<TextBlock Canvas.Left="3.248" Canvas.Top="2.185" Text="GitHub 项目主页" FontSize="13" FontWeight="Bold" />
+<TextBlock Canvas.Left="3.248" Canvas.Top="20.7575" Text="查看源码、版本和使用说明" FontSize="9" Foreground="{StaticResource Muted}"/>
+<TextBlock Canvas.Left="308.56" Canvas.Top="2.185" Text="›" FontSize="18" Foreground="{StaticResource Muted}"/>
+</Canvas>
+</Button>
+<Button x:Name="ChangePasswordButton" Style="{StaticResource SettingsActionButton}" Canvas.Left="12.992" Canvas.Top="158" Width="334.544" Height="40" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Click="ChangePasswordButton_Click" AutomationProperties.Name="修改密码">
+<Canvas>
+<TextBlock Canvas.Left="3.248" Canvas.Top="2.185" Text="修改密码" FontSize="13" FontWeight="Bold" />
+<TextBlock Canvas.Left="3.248" Canvas.Top="20.7575" Text="更新校园网账户密码" FontSize="9" Foreground="{StaticResource Muted}"/>
+<TextBlock Canvas.Left="308.56" Canvas.Top="2.185" Text="›" FontSize="18" Foreground="{StaticResource Muted}"/>
+</Canvas>
+</Button>
+<Button x:Name="RechargeButton" Style="{StaticResource SettingsActionButton}" Canvas.Left="12.992" Canvas.Top="204" Width="334.544" Height="40" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Click="RechargeButton_Click" AutomationProperties.Name="宽带充值">
+<Canvas>
+<TextBlock Canvas.Left="3.248" Canvas.Top="2.185" Text="宽带充值" FontSize="13" FontWeight="Bold" />
+<TextBlock Canvas.Left="3.248" Canvas.Top="20.7575" Text="为校园宽带账户充值" FontSize="9" Foreground="{StaticResource Muted}"/>
+<TextBlock Canvas.Left="308.56" Canvas.Top="2.185" Text="›" FontSize="18" Foreground="{StaticResource Muted}"/>
+</Canvas>
+</Button>
+</Canvas>
+</Border>
+</StackPanel>
+</ScrollViewer>
+<Canvas x:Name="SettingsHeader" Height="58.995" VerticalAlignment="Top" Background="{StaticResource Surface}">
+<TextBlock Canvas.Left="0" Canvas.Top="0" Text="设置" FontSize="26" FontWeight="Bold" />
+<TextBlock Canvas.Left="0" Canvas.Top="34.96" Text="管理连接行为和启动偏好" FontSize="12" Foreground="{StaticResource Muted}"/>
+</Canvas>
+</Grid>
      </Grid>
     </Grid>
-    <Border x:Name="NavigationBar" Grid.Row="2" Style="{StaticResource Card}" CornerRadius="18" Padding="6" BorderBrush="#EBECF0" BorderThickness="1"><UniformGrid Columns="3"><Button x:Name="HomeNavButton" Style="{StaticResource NavigationButton}" Foreground="{StaticResource Coral}" Click="HomeNavButton_Click" AutomationProperties.Name="主页"><StackPanel><ContentControl x:Name="HomeNavIcon" Style="{StaticResource PenIcon}" Content="{StaticResource PenHouseIcon}"/><TextBlock Text="主页" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" FontSize="12" HorizontalAlignment="Center" Margin="0,3,0,0"/></StackPanel></Button>
-<Button x:Name="LogsNavButton" Style="{StaticResource NavigationButton}" Foreground="{StaticResource Muted}" Click="LogsNavButton_Click" AutomationProperties.Name="日志"><StackPanel><ContentControl x:Name="LogsNavIcon" Style="{StaticResource PenIcon}" Content="{StaticResource PenLogIcon}"/><TextBlock Text="日志" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" FontSize="12" HorizontalAlignment="Center" Margin="0,3,0,0"/></StackPanel></Button>
-<Button x:Name="SettingsNavButton" Style="{StaticResource NavigationButton}" Foreground="{StaticResource Muted}" Click="SettingsNavButton_Click" AutomationProperties.Name="设置"><StackPanel><ContentControl x:Name="SettingsNavIcon" Style="{StaticResource PenIcon}" Content="{StaticResource PenSettingsIcon}"/><TextBlock Text="设置" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" FontSize="12" HorizontalAlignment="Center" Margin="0,3,0,0"/></StackPanel></Button></UniformGrid></Border>
+    <Canvas x:Name="ScrollIndicators" IsHitTestVisible="False">
+<Rectangle x:Name="SettingsScrollThumb" Width="2.7394209354" Height="74.8775055679" RadiusX="1.8262806236" RadiusY="1.8262806236" Fill="#40858A92" Canvas.Left="401.7817371938" Canvas.Top="101.3585746102" Visibility="Collapsed"/>
+    </Canvas>
+    <Rectangle x:Name="TopContentFade" Height="69.3986636971" VerticalAlignment="Top" Margin="0,80.3563474388,0,0" Fill="{StaticResource TopContentFadeBrush}" IsHitTestVisible="False" Visibility="Collapsed"/>
+    <Rectangle x:Name="BottomContentFade" Height="184.4543429844" VerticalAlignment="Bottom" Fill="{StaticResource BottomContentFadeBrush}" IsHitTestVisible="False"/>
+     <Border x:Name="NavigationBar" Style="{StaticResource Card}" CornerRadius="18" Padding="5" Margin="16.4365256125,733.2516703786,0,0" Width="377.1269487751" Height="72.1380846325" HorizontalAlignment="Left" VerticalAlignment="Top" IsEnabled="{Binding IsEnabled, ElementName=MainContent}">
+<Border.Effect><DropShadowEffect Color="#292C31" Opacity="0.0941176471" BlurRadius="29.2204899777" ShadowDepth="5.4788418708" Direction="270"/></Border.Effect>
+<UniformGrid Columns="3">
+      <Button x:Name="HomeNavButton" Style="{StaticResource NavigationButton}" BorderThickness="0" Foreground="{StaticResource Coral}" Click="HomeNavButton_Click" AutomationProperties.Name="主页">
+<Canvas Height="60.1380846325">
+<ContentControl x:Name="HomeNavIcon" Style="{StaticResource PenIcon}" Content="{StaticResource PenHouseIcon}" Canvas.Left="50.8544914625" Canvas.Top="9.8942093541"/>
+<TextBlock Canvas.Top="32.8942093541" Width="121.708982925" Text="主页" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" FontSize="12" FontWeight="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=Button}}" TextAlignment="Center"/>
+</Canvas>
+</Button>
+      <Button x:Name="LogsNavButton" Style="{StaticResource NavigationButton}" BorderThickness="0" Foreground="{StaticResource Muted}" Click="LogsNavButton_Click" AutomationProperties.Name="日志">
+<Canvas Height="60.1380846325">
+<ContentControl x:Name="LogsNavIcon" Style="{StaticResource PenIcon}" Content="{StaticResource PenLogIcon}" Canvas.Left="50.8544914625" Canvas.Top="9.8942093541"/>
+<TextBlock Canvas.Top="32.8942093541" Width="121.708982925" Text="日志" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" FontSize="12" FontWeight="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=Button}}" TextAlignment="Center"/>
+</Canvas>
+</Button>
+      <Button x:Name="SettingsNavButton" Style="{StaticResource NavigationButton}" BorderThickness="0" Foreground="{StaticResource Muted}" Click="SettingsNavButton_Click" AutomationProperties.Name="设置">
+<Canvas Height="60.1380846325">
+<ContentControl x:Name="SettingsNavIcon" Style="{StaticResource PenIcon}" Content="{StaticResource PenSettingsIcon}" Canvas.Left="50.8544914625" Canvas.Top="9.8942093541"/>
+<TextBlock Canvas.Top="32.8942093541" Width="121.708982925" Text="设置" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" FontSize="12" FontWeight="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=Button}}" TextAlignment="Center"/>
+</Canvas>
+</Button>
+     </UniformGrid>
+</Border>
+    <Grid x:Name="AccountOverlay" Visibility="Collapsed" KeyboardNavigation.TabNavigation="Cycle">
+<Border Background="#66000000" MouseLeftButtonDown="Overlay_MouseLeftButtonDown"/>
+<Border x:Name="AccountSheet" Height="477.5417037862" VerticalAlignment="Top" Margin="0,355.2422605791,0,0" Background="White" CornerRadius="20,20,0,0">
+<Border.RenderTransform>
+<TranslateTransform x:Name="SheetTranslation"/>
+</Border.RenderTransform>
+<Canvas>
+<Button Canvas.Left="174.64" Canvas.Top="9.295" Width="60.72" Height="17.4625" Padding="6" BorderThickness="0" Click="CloseSheet_Click" AutomationProperties.Name="关闭账户菜单">
+<Border Height="5.4625" Background="#E4E4E4" CornerRadius="3"/>
+</Button>
+<TextBlock x:Name="SheetTitle" Canvas.Left="16.24" Canvas.Top="45.885" Text="账户管理" FontSize="22" FontWeight="Bold" />
+<StackPanel x:Name="AccountActions" Canvas.Left="360" Canvas.Top="37.145">
+<Button x:Name="AddAccountButton" Width="34" Height="34" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Style="{StaticResource SmallSquareButton}" Background="{StaticResource SoftGreen}" Foreground="{StaticResource Green}" Click="AddAccount_Click" ToolTip="添加账号" AutomationProperties.Name="添加账号">
+<TextBlock Text="+" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Green}" HorizontalAlignment="Center"/>
+</Button>
+</StackPanel>
+<Button x:Name="CancelAccountEditButton" Canvas.Left="334" Canvas.Top="37.145" Width="60" Height="34" Content="取消" Visibility="Collapsed" Click="CancelAccountEdit_Click"/>
+<Rectangle Canvas.Top="96.14" Width="410" Height="1.0925" Fill="#EEEEEE"/>
+<ScrollViewer x:Name="AccountListScroll" Canvas.Left="16.24" Canvas.Top="117.99" Width="377.528" Height="258.2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+<ItemsControl x:Name="AccountList">
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Border CornerRadius="12" Background="{Binding Background}" Height="67.735" Margin="0,0,0,17.48">
+<Canvas>
+<Button Width="297.192" Height="67.735" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Click="SelectAccount_Click" Tag="{Binding Id}" AutomationProperties.Name="{Binding Name}">
+<Canvas>
+<Ellipse Canvas.Left="12.992" Canvas.Top="21.85" Width="16" Height="16" Fill="{Binding DotColor}" Stroke="#D6D6D6" StrokeThickness="2"/>
+<TextBlock Canvas.Left="42.224" Canvas.Top="13.11" Width="245" Text="{Binding Name}" FontSize="14" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+<TextBlock Canvas.Left="42.224" Canvas.Top="38.2375" Width="245" ToolTip="{Binding Status}" TextTrimming="CharacterEllipsis">
+<TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource Caption}"><Setter Property="Text" Value="未连接"/><Style.Triggers><DataTrigger Binding="{Binding DotColor}" Value="{StaticResource Green}"><Setter Property="Text" Value="当前使用"/><Setter Property="Foreground" Value="{StaticResource Green}"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+</TextBlock>
+</Canvas>
+</Button>
+<Button Canvas.Left="300.32" Canvas.Top="12.85" Width="36" Height="36" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Foreground="{StaticResource Muted}" Tag="{Binding Id}" Click="EditAccount_Click" ToolTip="编辑账号" AutomationProperties.Name="编辑账号">
+<ContentControl Style="{StaticResource PenIcon}" Content="{StaticResource PenPencilIcon}" Width="18" Height="18"/>
+</Button>
+<Button Canvas.Left="336.048" Canvas.Top="12.85" Width="36" Height="36" Padding="0" BorderThickness="0" VerticalContentAlignment="Stretch" Foreground="{StaticResource Muted}" Tag="{Binding Id}" Click="DeleteAccount_Click" ToolTip="删除账号" AutomationProperties.Name="删除账号">
+<ContentControl Style="{StaticResource PenIcon}" Content="{StaticResource PenTrashIcon}" Width="18" Height="18"/>
+</Button>
+</Canvas>
+</Border>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+</ScrollViewer>
+<ScrollViewer x:Name="AccountEditorScroll" Canvas.Left="16.24" Canvas.Top="117.99" Width="377.528" Height="420" Visibility="{Binding Visibility, ElementName=AccountEditor}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+<StackPanel x:Name="AccountEditor" Visibility="Collapsed">
+<TextBlock Text="账户备注（可选）" Style="{StaticResource Caption}"/>
+<TextBox x:Name="AccountNameTextBox" Margin="0,5,0,14" MaxLength="40" AutomationProperties.Name="账户备注"/>
+<TextBlock Text="校园网账号" Style="{StaticResource Caption}"/>
+<TextBox x:Name="UserTextBox" Margin="0,5,0,14" MaxLength="128" AutomationProperties.Name="校园网账号"/>
+<TextBlock Text="密码" Style="{StaticResource Caption}"/>
+<PasswordBox x:Name="PasswordBox" Margin="0,5,0,14" MaxLength="256" AutomationProperties.Name="密码"/>
+<TextBlock x:Name="AccountErrorText" Foreground="#C75243" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
+<Button Content="保存账户" Style="{StaticResource PrimaryButton}" Click="SaveAccount_Click" Height="40"/>
+</StackPanel>
+</ScrollViewer>
+<TextBlock x:Name="AccountHint" Canvas.Left="16.24" Canvas.Top="393.3" Text="点击账号即可切换当前使用的校园网账户" FontSize="11" Style="{StaticResource Caption}" />
+</Canvas>
+</Border>
+</Grid>
+    <Grid x:Name="DetailsOverlay" Visibility="Collapsed" Background="#66000000" KeyboardNavigation.TabNavigation="Cycle">
+<Border Background="White" CornerRadius="20" Margin="16,56,16,20" Padding="20">
+<Grid>
+<Grid.RowDefinitions>
+<RowDefinition Height="48"/>
+<RowDefinition Height="Auto"/>
+<RowDefinition/>
+<RowDefinition Height="52"/>
+</Grid.RowDefinitions>
+<TextBlock Text="详细日志" FontSize="22" FontWeight="Bold"/>
+<Button HorizontalAlignment="Right" VerticalAlignment="Top" Width="36" Height="32" Padding="8" Click="CloseDetails_Click" AutomationProperties.Name="关闭详细日志">
+<Path Style="{StaticResource Icon}" Data="{StaticResource CloseIcon}" Width="16" Height="16"/>
+</Button>
+<TextBlock x:Name="HealthTextBlock" Grid.Row="1" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+<TextBox x:Name="LogTextBox" Grid.Row="2" IsReadOnly="True" TextWrapping="NoWrap" FontFamily="Consolas" FontSize="11" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="详细运行日志"/>
+<StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+<Button Content="刷新" Click="RefreshDetails_Click"/>
+<Button Content="导出 ZIP" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="ExportLogsButton_Click"/>
+</StackPanel>
+</Grid>
+</Border>
+</Grid>
+    <Border x:Name="Notice" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16.24,107.5322939867" MaxWidth="330" Background="{StaticResource SoftGreen}" BorderBrush="{StaticResource Green}" BorderThickness="1" CornerRadius="12" Padding="12,10" IsHitTestVisible="False">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="10"/>
+<ColumnDefinition/>
+</Grid.ColumnDefinitions>
+<Ellipse x:Name="NoticeAccent" Width="7" Height="7" Fill="{StaticResource Green}" VerticalAlignment="Center"/>
+<TextBlock x:Name="NoticeText" Grid.Column="1" Foreground="{StaticResource Green}" TextWrapping="Wrap" TextAlignment="Right" FontSize="12" FontWeight="Bold"/>
+</Grid>
+</Border>
+    <StackPanel x:Name="WindowControls" Width="65.7461024499" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="327.8173719376,21.9153674833,0,0" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+<Button x:Name="MinimizeWindowButton" Style="{StaticResource WindowControlButton}" Click="MinimizeWindowButton_Click" ToolTip="最小化到后台" AutomationProperties.Name="最小化窗口">
+<Viewbox Width="12.7839643653" Height="12.7839643653"><Canvas Width="24" Height="24"><Path Data="M5,12 H19" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+</Button>
+<Button x:Name="CloseWindowButton" Style="{StaticResource CloseWindowControlButton}" Margin="3.6525612472,0,0,0" Click="CloseWindowButton_Click" ToolTip="关闭窗口，继续在后台运行" AutomationProperties.Name="关闭窗口">
+<Viewbox Width="12.7839643653" Height="12.7839643653"><Canvas Width="24" Height="24"><Path Data="M6,6 L18,18 M18,6 L6,18" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+</Button>
+    </StackPanel>
    </Grid>
-   <Grid x:Name="AccountOverlay" Visibility="Collapsed" KeyboardNavigation.TabNavigation="Cycle">
-    <Border Background="#66000000" MouseLeftButtonDown="Overlay_MouseLeftButtonDown"/>
-    <Border x:Name="AccountSheet" Height="530" VerticalAlignment="Bottom" Background="White" CornerRadius="20,20,0,0">
-     <Border.RenderTransform><TranslateTransform x:Name="SheetTranslation"/></Border.RenderTransform>
-     <Grid Margin="20,14,20,20"><Grid.RowDefinitions><RowDefinition Height="20"/><RowDefinition Height="54"/><RowDefinition/><RowDefinition Height="28"/></Grid.RowDefinitions>
-      <Button Width="60" Height="16" Padding="0" HorizontalAlignment="Center" Click="CloseSheet_Click" AutomationProperties.Name="关闭账户菜单"><Border Height="5" Background="#E4E4E4" CornerRadius="3"/></Button>
-      <Grid Grid.Row="1"><TextBlock x:Name="SheetTitle" Text="账户管理" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
-       <StackPanel x:Name="AccountActions" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"><Button x:Name="AddAccountButton" Width="44" Height="32" Padding="10,7" Background="{StaticResource SoftGreen}" Foreground="{StaticResource Green}" Click="AddAccount_Click" ToolTip="添加账号" AutomationProperties.Name="添加账号"><Path Style="{StaticResource Icon}" Data="{StaticResource PlusIcon}" Width="18" Height="18"/></Button></StackPanel>
-       <Button x:Name="CancelAccountEditButton" Content="取消" HorizontalAlignment="Right" Visibility="Collapsed" Click="CancelAccountEdit_Click"/>
-      </Grid>
-      <Grid Grid.Row="2" Margin="0,20,0,0">
-       <ScrollViewer x:Name="AccountListScroll" VerticalScrollBarVisibility="Auto"><ItemsControl x:Name="AccountList"><ItemsControl.ItemTemplate><DataTemplate>
-        <Border CornerRadius="12" Background="{Binding Background}" Margin="0,0,0,16" Height="62"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-         <Button Click="SelectAccount_Click" Tag="{Binding Id}" Padding="16,8" AutomationProperties.Name="{Binding Name}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Ellipse Width="20" Height="20" Fill="{Binding DotColor}" Stroke="#D6D6D6" StrokeThickness="1"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Status}" Style="{StaticResource Caption}" Margin="0,3,0,0"/></StackPanel></Grid></Button>
-         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0">
-          <Button Width="40" Padding="10" Foreground="{StaticResource Muted}" Tag="{Binding Id}" Click="EditAccount_Click" ToolTip="编辑账号" AutomationProperties.Name="编辑账号"><Path Style="{StaticResource Icon}" Data="{StaticResource PencilIcon}" Width="18" Height="18"/></Button>
-          <Button Width="40" Padding="10" Foreground="{StaticResource Muted}" Tag="{Binding Id}" Click="DeleteAccount_Click" ToolTip="删除账号" AutomationProperties.Name="删除账号"><Path Style="{StaticResource Icon}" Data="{StaticResource TrashIcon}" Width="18" Height="18"/></Button>
-         </StackPanel>
-        </Grid></Border>
-       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
-       <StackPanel x:Name="AccountEditor" Visibility="Collapsed">
-        <TextBlock Text="账户备注（可选）" Style="{StaticResource Caption}" /><TextBox x:Name="AccountNameTextBox" Margin="0,5,0,14" MaxLength="40" AutomationProperties.Name="账户备注"/>
-        <TextBlock Text="校园网账号" Style="{StaticResource Caption}" /><TextBox x:Name="UserTextBox" Margin="0,5,0,14" MaxLength="128" AutomationProperties.Name="校园网账号"/>
-        <TextBlock Text="密码" Style="{StaticResource Caption}" /><PasswordBox x:Name="PasswordBox" Margin="0,5,0,14" MaxLength="256" AutomationProperties.Name="密码"/>
-        <TextBlock x:Name="AccountErrorText" Foreground="#C75243" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
-        <Button Content="保存账户" Style="{StaticResource PrimaryButton}" Click="SaveAccount_Click" Height="40"/>
-       </StackPanel>
-      </Grid>
-      <TextBlock Text="点击账号即可切换当前使用的校园网账户" Style="{StaticResource Caption}" x:Name="AccountHint" Grid.Row="3" VerticalAlignment="Center"/>
-     </Grid>
-    </Border>
-   </Grid>
-   <Grid x:Name="DetailsOverlay" Visibility="Collapsed" Background="#66000000" KeyboardNavigation.TabNavigation="Cycle">
-    <Border Background="White" CornerRadius="20" Margin="16,56,16,20" Padding="20"><Grid><Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="52"/></Grid.RowDefinitions>
-     <TextBlock Text="详细日志" FontSize="22" FontWeight="SemiBold"/><Button HorizontalAlignment="Right" VerticalAlignment="Top" Width="36" Height="32" Padding="8" Click="CloseDetails_Click" AutomationProperties.Name="关闭详细日志"><Path Style="{StaticResource Icon}" Data="{StaticResource CloseIcon}" Width="16" Height="16"/></Button>
-     <TextBlock x:Name="HealthTextBlock" Grid.Row="1" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,12"/>
-     <TextBox x:Name="LogTextBox" Grid.Row="2" IsReadOnly="True" TextWrapping="NoWrap" FontFamily="Consolas" FontSize="11" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="详细运行日志"/>
-     <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom"><Button Content="刷新" Click="RefreshDetails_Click"/><Button Content="导出 ZIP" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="ExportLogsButton_Click"/></StackPanel>
-    </Grid></Border>
-   </Grid>
-   <Border x:Name="Notice" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,98" MaxWidth="360" Background="{StaticResource SoftGreen}" BorderBrush="{StaticResource Green}" BorderThickness="1" CornerRadius="12" Padding="12,10" IsHitTestVisible="False">
-    <Grid>
-     <Grid.ColumnDefinitions><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-     <Ellipse x:Name="NoticeAccent" Width="7" Height="7" Fill="{StaticResource Green}" VerticalAlignment="Center"/>
-     <TextBlock x:Name="NoticeText" Grid.Column="1" Foreground="{StaticResource Green}" TextWrapping="Wrap" TextAlignment="Right" FontSize="12" FontWeight="SemiBold"/>
-    </Grid>
-   </Border>
-  </Grid>
- </Viewbox>
+  </Viewbox>
+ </Grid>
 </Window>

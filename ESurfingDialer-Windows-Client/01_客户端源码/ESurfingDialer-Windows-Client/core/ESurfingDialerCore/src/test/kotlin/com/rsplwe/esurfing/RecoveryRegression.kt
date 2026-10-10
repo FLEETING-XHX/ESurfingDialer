@@ -49,11 +49,11 @@ fun main() {
     verify(!tracker.observe(com.rsplwe.esurfing.utils.NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP),
         "10.1.2.3", "10.2.3.4", 1, 120, 9999), "Missing-IP result without a portal is not an authentication request")
     States.acknowledgeAuthorization(States.authorizationRequestVersion)
-    States.requestAuthorization()
+    States.requestAuthorization(portal())
     val olderRequest = States.authorizationRequestVersion
     States.updateNetworkStatus(ConnectivityStatus.SUCCESS)
     verify(States.forceAuthorization, "A successful connectivity probe cannot erase accepted recovery")
-    States.requestAuthorization()
+    States.requestAuthorization(portal("10.9.8.7"))
     val newerRequest = States.authorizationRequestVersion
     States.acknowledgeAuthorization(olderRequest)
     verify(States.forceAuthorization, "Old login completion cannot acknowledge a newer recovery request")
@@ -61,6 +61,40 @@ fun main() {
     verify(States.forceAuthorization, "Heartbeat success cannot consume pending portal recovery")
     States.acknowledgeAuthorization(newerRequest)
     verify(!States.forceAuthorization, "Matching login completion consumes recovery request")
+
+    HealthStatus.markLoginSuccess()
+    val accepted = portal("10.9.8.7")
+    States.requestAuthorization(accepted)
+    val snapshot = States.authorizationRequest()!!
+    States.observePortal(portal("10.9.8.6"))
+    verify(States.authorizationRequest()?.portal == accepted, "Undebounced portal observation cannot replace accepted candidate")
+    States.requestSessionRecovery(portal())
+    verify(States.authorizationRequest()?.portal == accepted, "Old session heartbeat failure cannot replace newer portal request")
+    States.updateNetworkStatus(ConnectivityStatus.REQUEST_ERROR)
+    verify(States.authorizationRequest()?.version == snapshot.version, "Probe error does not hide accepted request")
+    States.requestAuthorization(accepted.copy(portalBody = "changed page nonce"))
+    verify(States.authorizationRequest()?.version == snapshot.version, "Same candidate refreshes cached body without queuing another login")
+    HealthStatus.resetSession()
+    States.observePortal(portal("10.9.8.6"))
+    States.completeAuthorization(snapshot.version, 240)
+    verify(States.forceAuthorization && States.authorizationRequest()?.portal?.userIp == "10.9.8.6",
+        "Observation during older login remains pending after older success")
+    States.isRunning = false
+    States.cancelAuthorization()
+    verify(!States.requestAuthorization(accepted) && !States.completeAuthorization(snapshot.version, 240) && !States.forceAuthorization,
+        "Stopped client rejects new requests and late login completion")
+    States.isRunning = true
+    verify(!States.requestAuthorization(com.rsplwe.esurfing.utils.NetworkConnectivityResult(ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP)),
+        "Empty redirect cannot create a deterministic failure loop")
+
+    States.rootDir.mkdirs()
+    HealthStatus.waitForHeartbeat(240)
+    Thread.sleep(20)
+    verify(HealthStatus.progressAgeMillis() >= 10, "Heartbeat progress uses elapsed monotonic time")
+    HealthStatus.write()
+    val progressJson = File(States.rootDir, "health.json").readText()
+    verify(progressJson.contains("\"clientProgressTimeoutMillis\": 330000") && progressJson.contains(HealthStatus.processInstanceId),
+        "Heartbeat deadline includes negotiated interval and grace, bound to core instance")
 
     HealthStatus.markAuthenticationFailure(AuthenticationFailure("NATIVE_SESSION_REJECTED", true), true)
     CoreSignals.requestNetworkRecheck()
@@ -138,6 +172,7 @@ fun main() {
         serverExecutor.shutdownNow()
         resetApiConnections()
     }
+    count += ClientRecoveryRegression.run()
     println("PASS: $count recovery checks")
     kotlin.system.exitProcess(0)
 }

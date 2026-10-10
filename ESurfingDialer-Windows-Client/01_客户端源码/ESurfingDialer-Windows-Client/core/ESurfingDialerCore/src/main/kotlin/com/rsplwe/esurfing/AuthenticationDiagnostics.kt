@@ -3,7 +3,8 @@ package com.rsplwe.esurfing
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Codes are safe to put in health.json; response bodies and exception messages are not. */
-class AuthenticationFailure(val code: String, val deterministic: Boolean = false) :
+class AuthenticationFailure(val code: String, val deterministic: Boolean = false,
+                            val portalDiagnostics: PortalDiagnostics? = null) :
     IllegalStateException(code)
 
 data class ZsmMetadata(val format: String, val algoId: String? = null,

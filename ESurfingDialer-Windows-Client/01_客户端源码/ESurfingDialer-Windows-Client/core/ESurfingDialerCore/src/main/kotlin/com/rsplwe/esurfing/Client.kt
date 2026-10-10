@@ -11,15 +11,15 @@ import com.rsplwe.esurfing.network.readAuthenticationResponse
 import com.rsplwe.esurfing.utils.checkConnectivity
 import com.rsplwe.esurfing.utils.ConnectivityStatus.DEFAULT
 import com.rsplwe.esurfing.utils.ConnectivityStatus.IS_REDIRECTS_FOUND_IP
-import com.rsplwe.esurfing.utils.ConnectivityStatus.IS_REDIRECTS_NOT_FOUND_IP
-import com.rsplwe.esurfing.utils.ConnectivityStatus.REQUEST_ERROR
-import com.rsplwe.esurfing.utils.ConnectivityStatus.SUCCESS
 import com.rsplwe.esurfing.utils.getTime
 import org.apache.log4j.Logger
 import java.lang.Thread.sleep
 import kotlin.system.exitProcess
 
-class Client(private val options: Options) : Runnable {
+class Client(private val options: Options,
+             private val sessionFactory: (ByteArray) -> AuthenticationSession = ::Session,
+             private val bootstrap: (String, String) -> ByteArray = ::requestSessionBootstrap,
+             private val send: (String, String) -> NetResult<okhttp3.ResponseBody> = { url, data -> post(url, data) }) : Runnable {
 
     private val logger: Logger = Logger.getLogger(Client::class.java)
     private var keepUrl = ""
@@ -31,10 +31,11 @@ class Client(private val options: Options) : Runnable {
     private var endpoints: AuthenticationEndpoints? = null
     private var attemptedPortal: com.rsplwe.esurfing.utils.NetworkConnectivityResult? = null
 
-    var session: Session? = null
+    var session: AuthenticationSession? = null
 
     @Volatile
     var tick: Long = 0
+    private var heartbeatDueNanos: Long = 0
 
     override fun run() {
         HealthStatus.updateClientThreadAlive(true)
@@ -51,25 +52,30 @@ class Client(private val options: Options) : Runnable {
                     val blocked = authenticationRetryPolicy.record(e)
                     resetSessionState("authentication failed: ${e.code}", countAbnormalRecovery = false)
                     HealthStatus.markAuthenticationFailure(e, blocked)
-                    logger.error("LOGIN_FAILED code=${e.code} retry=${if (blocked) "paused" else "backoff"}")
-                    if (!blocked) CoreSignals.waitForClient(nextLoginRetrySeconds() * 1000)
+                    logger.error("LOGIN_FAILED code=${e.code} retry=${if (blocked) "paused" else "backoff"}${e.portalDiagnostics?.let { " ${it.summary()}" }.orEmpty()}")
+                    if (!blocked) waitForRetry(nextLoginRetrySeconds())
                 } catch (e: Exception) {
                     HealthStatus.markError("client loop recovered: ${e.message}")
                     logger.error("CLIENT_LOOP_RECOVERED", e)
                     resetSessionState("unhandled exception in client loop", countAbnormalRecovery = true)
-                    sleep(nextLoginRetrySeconds() * 1000)
+                    waitForRetry(nextLoginRetrySeconds())
                 }
             }
+        } catch (_: InterruptedException) {
+            // A stop can interrupt the retry wait inside a catch block as well as the main iteration.
+            Thread.currentThread().interrupt()
         } finally {
             HealthStatus.updateClientThreadAlive(false)
-            HealthStatus.write()
+            val interrupted = Thread.interrupted()
+            try { HealthStatus.write() } finally { if (interrupted) Thread.currentThread().interrupt() }
             logger.warn("CLIENT_THREAD_EXITED")
         }
     }
 
     private fun runClientIteration() {
+        val pending = States.authorizationRequest()
         if (HealthStatus.authenticationBlocked) {
-            if (States.portal != null && portalIdentity(States.portal) != portalIdentity(attemptedPortal)) {
+            if (pending != null && portalIdentity(pending.portal) != portalIdentity(attemptedPortal)) {
                 authenticationRetryPolicy.reset()
                 HealthStatus.clearAuthenticationFailure()
             } else {
@@ -77,84 +83,86 @@ class Client(private val options: Options) : Runnable {
                 return
             }
         }
-        if (session != null && HealthStatus.authenticated
-            && !States.forceAuthorization && States.networkStatus != IS_REDIRECTS_FOUND_IP) {
-            waitForHeartbeatOrRecovery()
-            return
-        }
-        when {
-            States.networkStatus == DEFAULT -> {
-                CoreSignals.waitForClient(1000)
-            }
-
-            States.networkStatus == REQUEST_ERROR -> {
-                CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
-            }
-
-            States.networkStatus == IS_REDIRECTS_NOT_FOUND_IP && States.portal?.portalUrl == null
-                && States.portal?.portalBody == null -> {
-                HealthStatus.markError("portal redirect missing user/ac ip")
-                CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
-            }
-
-            States.forceAuthorization || States.networkStatus == IS_REDIRECTS_FOUND_IP
-                || States.networkStatus == IS_REDIRECTS_NOT_FOUND_IP -> {
-                authorization()
-            }
-
-            States.networkStatus == SUCCESS -> {
-                if (session != null && HealthStatus.authenticated) {
-                    waitForHeartbeatOrRecovery()
-                } else {
-                    CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
-                }
-            }
+        // A request owns its candidate and is independent of later network observations.
+        if (pending != null) {
+            authorization(pending)
+        } else if (session != null && HealthStatus.authenticated) {
+            val remaining = heartbeatDueNanos - System.nanoTime()
+            if (remaining <= 0) maybeHeartbeat()
+            else CoreSignals.waitForClient(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1))
+        } else {
+            CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
         }
     }
 
-    private fun waitForHeartbeatOrRecovery() {
-        val remaining = keepRetrySeconds * 1000 - (System.currentTimeMillis() - tick)
-        if (remaining <= 0) maybeHeartbeat()
-        else CoreSignals.waitForClient(remaining)
+    private fun ensureRunning() {
+        if (!isRunning || Thread.currentThread().isInterrupted) throw InterruptedException("client stopped")
+    }
+
+    private fun scheduleHeartbeat() {
+        tick = System.currentTimeMillis()
+        heartbeatDueNanos = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(keepRetrySeconds)
+        HealthStatus.waitForHeartbeat(keepRetrySeconds)
+    }
+
+    private fun waitForRetry(seconds: Long) {
+        val key = portalIdentity(attemptedPortal)
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(seconds)
+        while (isRunning) {
+            if (States.authorizationRequest()?.let { portalIdentity(it.portal) != key } == true) return
+            val remaining = deadline - System.nanoTime()
+            if (remaining <= 0) return
+            CoreSignals.waitForClient(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1))
+        }
+        ensureRunning()
     }
 
     private fun maybeHeartbeat() {
-        if ((System.currentTimeMillis() - tick) < keepRetrySeconds * 1000) return
+        ensureRunning()
+        if (System.nanoTime() < heartbeatDueNanos) return
+        HealthStatus.beginAuthenticationStage("heartbeat")
 
         logger.info("HEARTBEAT_ATTEMPT")
         try {
             heartbeat(ticket)
-            HealthStatus.markHeartbeatSuccess()
+            ensureRunning()
+            HealthStatus.markHeartbeatSuccess(keepRetrySeconds)
             abnormalRecoveries = 0
             logger.info("HEARTBEAT_SUCCESS nextRetry=${keepRetrySeconds}s")
-        } catch (e: Exception) {
+        } catch (e: InterruptedException) { throw e }
+        catch (e: Exception) {
             val failures = HealthStatus.consecutiveHeartbeatFailures.incrementAndGet()
             HealthStatus.markError("heartbeat failed: ${e.message}")
             logger.warn("HEARTBEAT_FAILED count=$failures: ${e.message}", e)
 
             if (failures >= RuntimeConfig.heartbeatFailureThreshold) {
                 resetSessionState("heartbeat failure threshold reached", countAbnormalRecovery = true)
-                States.requestAuthorization()
-                States.updateNetworkStatus(DEFAULT)
+                (attemptedPortal ?: States.portal)?.let { States.requestSessionRecovery(it) }
             } else {
                 keepRetrySeconds = (failures * 5L).coerceAtMost(30)
             }
         } finally {
-            tick = System.currentTimeMillis()
+            if (isRunning && session != null && HealthStatus.authenticated) scheduleHeartbeat()
         }
     }
 
-    private fun authorization() {
-        val authorizationRequest = States.authorizationRequestVersion
+    private fun authorization(request: AuthorizationRequest) {
+        ensureRunning()
+        val authorizationRequest = request.version
         if (session != null && HealthStatus.authenticated) {
+            HealthStatus.authenticated = false
+            HealthStatus.beginAuthenticationStage("terminate")
             try { term() } catch (e: Exception) { logger.warn("SESSION_TERMINATE_RECOVERY_FAILED", e) }
         }
+        ensureRunning()
+        if (portalIdentity(request.portal) != portalIdentity(attemptedPortal)) authenticationRetryPolicy.reset()
         resetSessionState("starting authorization", countAbnormalRecovery = false)
+        ensureRunning()
         HealthStatus.clearAuthenticationFailure()
         States.algoId = "00000000-0000-0000-0000-000000000000"
 
         logger.info("LOGIN_ATTEMPT channel=android64_native ua=${Constants.USER_AGENT}")
-        attemptedPortal = States.portal
+        attemptedPortal = request.portal
         HealthStatus.beginAuthenticationStage("portal")
         val portal = attemptedPortal
         endpoints = PortalConfiguration.discover(portal?.portalUrl, portal?.portalBody,
@@ -162,12 +170,15 @@ class Client(private val options: Options) : Runnable {
         States.userIp = endpoints!!.userIp
         States.acIp = endpoints!!.acIp
         logger.info("AUTH_ENDPOINTS source=${endpoints!!.source} auth=${AuthenticationDiagnostics.endpoint(endpoints!!.authUrl)} ticket=${AuthenticationDiagnostics.endpoint(endpoints!!.ticketUrl)}")
+        ensureRunning()
         HealthStatus.beginAuthenticationStage("session")
         initSession()
 
+        ensureRunning()
         logger.info("SESSION_READY")
         HealthStatus.beginAuthenticationStage("ticket")
         ticket = getTicket()
+        ensureRunning()
         logger.info("TICKET_READY")
         HealthStatus.beginAuthenticationStage("login")
         login()
@@ -176,34 +187,34 @@ class Client(private val options: Options) : Runnable {
             HealthStatus.markError("keepUrl is empty")
             logger.error("LOGIN_FAILED KeepUrl is empty")
             resetSessionState("empty keepUrl", countAbnormalRecovery = true)
-            sleep(nextLoginRetrySeconds() * 1000)
+            waitForRetry(nextLoginRetrySeconds())
             return
         }
 
+        ensureRunning()
         HealthStatus.beginAuthenticationStage("confirm")
         if (!confirmAuthentication()) {
             HealthStatus.markError("login response was not confirmed by keep heartbeat")
             logger.warn("LOGIN_NOT_CONFIRMED")
             resetSessionState("login not confirmed", countAbnormalRecovery = true)
             States.updateNetworkStatus(DEFAULT)
-            sleep(nextLoginRetrySeconds() * 1000)
+            waitForRetry(nextLoginRetrySeconds())
             return
         }
-        States.acknowledgeAuthorization(authorizationRequest)
-        States.updateNetworkStatus(SUCCESS)
+        ensureRunning()
+        if (!States.completeAuthorization(authorizationRequest, keepRetrySeconds)) throw InterruptedException("client stopped")
         authenticationRetryPolicy.reset()
         loginFailures = 0
         abnormalRecoveries = 0
-        tick = System.currentTimeMillis()
-        HealthStatus.markLoginSuccess()
+        scheduleHeartbeat()
         logger.info("LOGIN_SUCCESS")
     }
 
     private fun initSession() {
-        val zsm = requestSessionBootstrap(endpoints!!.ticketUrl, States.algoId)
+        val zsm = bootstrap(endpoints!!.ticketUrl, States.algoId)
         val metadata = AuthenticationDiagnostics.inspect(zsm)
         logger.info("ZSM_METADATA provider=android64_native format=${metadata.format} algoIdCandidate=${metadata.algoId ?: "unavailable"} declaredUnpackedBytes=${metadata.declaredUnpackedBytes ?: -1}")
-        try { session = Session(zsm) }
+        try { session = sessionFactory(zsm) }
         catch (e: AuthenticationFailure) { throw e }
         catch (_: Exception) { throw AuthenticationFailure("NATIVE_ENVIRONMENT_INIT_FAILED", true) }
     }
@@ -228,7 +239,7 @@ class Client(private val options: Options) : Runnable {
                 <ostag>Xiaomi 6</ostag>
             </request>
         """.trimIndent()
-        when (val result = post(endpoints!!.ticketUrl, session!!.encrypt(payload))) {
+        when (val result = send(endpoints!!.ticketUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> {
                 return AuthenticationProtocol.ticket(decryptedResponse(result, "TICKET"))
             }
@@ -251,7 +262,7 @@ class Client(private val options: Options) : Runnable {
                 <passwd>${AuthenticationProtocol.escape(options.loginPassword)}</passwd>
             </request>
         """.trimIndent()
-        when (val result = post(endpoints!!.authUrl, session!!.encrypt(payload))) {
+        when (val result = send(endpoints!!.authUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> {
                 val response = AuthenticationProtocol.login(decryptedResponse(result, "LOGIN"))
                 keepUrl = response.keepUrl
@@ -284,7 +295,7 @@ class Client(private val options: Options) : Runnable {
                 <ostag>Xiaomi 6</ostag>
             </request>
         """.trimIndent()
-        when (val result = post(keepUrl, session!!.encrypt(payload))) {
+        when (val result = send(keepUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> {
                 keepRetrySeconds = AuthenticationProtocol.heartbeat(decryptedResponse(result, "HEARTBEAT"))
             }
@@ -311,7 +322,7 @@ class Client(private val options: Options) : Runnable {
                 <ostag>Xiaomi 6</ostag>
             </request>
         """.trimIndent()
-        when (val result = post(termUrl, session!!.encrypt(payload))) {
+        when (val result = send(termUrl, session!!.encrypt(payload))) {
             is NetResult.Success -> result.data.close()
             is NetResult.Error -> {
                 logger.warn("SESSION_TERMINATE_FAILED ${result.exception}")
@@ -321,10 +332,13 @@ class Client(private val options: Options) : Runnable {
 
     private fun confirmAuthentication(): Boolean {
         repeat(RuntimeConfig.loginConfirmationAttempts) { attempt ->
+            ensureRunning()
             HealthStatus.beginAuthenticationStage("confirm")
             sleep(RuntimeConfig.loginConfirmationIntervalSeconds * 1000)
+            ensureRunning()
             try {
                 heartbeat(ticket)
+                ensureRunning()
                 logger.info("LOGIN_CONFIRMED attempt=${attempt + 1}")
                 return true
             } catch (e: InterruptedException) {
@@ -334,7 +348,7 @@ class Client(private val options: Options) : Runnable {
                 val probe = checkConnectivity()
                 if (probe.status == IS_REDIRECTS_FOUND_IP || probe.portalUrl != null || probe.portalBody != null) {
                     // A newly discovered portal is for the next attempt, never mutate this session's IPs.
-                    States.portal = probe
+                    States.observePortal(probe)
                 }
                 logger.warn("LOGIN_CONFIRMATION_FAILED attempt=${attempt + 1} status=${probe.status}", e)
             }
@@ -343,6 +357,7 @@ class Client(private val options: Options) : Runnable {
     }
 
     private fun resetSessionState(reason: String, countAbnormalRecovery: Boolean) {
+        HealthStatus.beginAuthenticationStage("cleanup")
         logger.warn("SESSION_RESET reason=$reason")
         try {
             session?.free()
@@ -372,8 +387,5 @@ class Client(private val options: Options) : Runnable {
         val delay = RuntimeConfig.loginRetryInitialSeconds * (1L shl (loginFailures - 1).coerceAtMost(5))
         return delay.coerceAtMost(RuntimeConfig.loginRetryMaxSeconds)
     }
-
-    private fun portalIdentity(portal: com.rsplwe.esurfing.utils.NetworkConnectivityResult?): String =
-        "${portal?.userIp}|${portal?.acIp}|${AuthenticationDiagnostics.endpoint(portal?.portalUrl.orEmpty())}"
 
 }

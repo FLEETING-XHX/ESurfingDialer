@@ -9,3 +9,9 @@ data
 *.tar
 *.tar.gz
 backups
+# 私有环境配置及备份不进入源码构建上下文，仅保留根目录模板。
+**/.env*
+**/*.env
+**/*.env.*
+**/*.env~
+!.env.example

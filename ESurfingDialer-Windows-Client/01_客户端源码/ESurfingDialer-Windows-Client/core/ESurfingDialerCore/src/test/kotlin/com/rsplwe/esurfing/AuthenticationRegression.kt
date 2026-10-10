@@ -102,13 +102,13 @@ fun main() {
     verify(PortalConfiguration.parse("normal page") == null, "Missing config permits explicit legacy fallback")
     verify(PortalConfiguration.discover(null, null, "10.1.2.3", "10.2.3.4").source == "legacy_fallback", "Legacy fallback validated")
     failure("PORTAL_CONFIG_TRUNCATED") { PortalConfiguration.parse(config(ticket).substringBefore("//config.campus.js.chinatelecom.com-->")) }
-    failure("PORTAL_INVALID_URL") { PortalConfiguration.parse(config(ticket, "file:///auth.cgi")) }
-    failure("PORTAL_INVALID_URL") { PortalConfiguration.parse(config(ticket, "http://localhost/auth.cgi")) }
-    failure("PORTAL_INVALID_URL") { PortalConfiguration.parse(config(ticket, "http://user:secret@example.com/auth.cgi")) }
+    failure("PORTAL_AUTH_URL_INVALID") { PortalConfiguration.parse(config(ticket, "file:///auth.cgi")) }
+    failure("PORTAL_AUTH_URL_INVALID") { PortalConfiguration.parse(config(ticket, "http://localhost/auth.cgi")) }
+    failure("PORTAL_AUTH_URL_INVALID") { PortalConfiguration.parse(config(ticket, "http://user:secret@example.com/auth.cgi")) }
     failure("PORTAL_IP_INVALID") { PortalConfiguration.parse(config(ticket.replace("10.1.2.3", "999.1.2.3"))) }
     failure("PORTAL_IP_INVALID") { PortalConfiguration.parse(config(ticket + "&wlanuserip=10.9.8.7")) }
     failure("PORTAL_IP_INVALID") { PortalConfiguration.parse(config(ticket.replace("wlanacip=10.2.3.4", "none=1"))) }
-    failure("PORTAL_CONFIG_INVALID") { PortalConfiguration.parse(config(ticket.replace("ticket.cgi", "random.cgi"))) }
+    failure("PORTAL_ENDPOINT_PATH_INVALID") { PortalConfiguration.parse(config(ticket.replace("ticket.cgi", "random.cgi"))) }
 
     verify(AuthenticationProtocol.ticket("<response><ticket><![CDATA[token&<>]]></ticket></response>") == "token&<>",
         "Ticket CDATA parsed without markup leakage")
@@ -219,7 +219,7 @@ fun main() {
             "IPs discovered from final portal config when initial redirect has none")
         failure("PORTAL_IP_INVALID") { PortalConfiguration.discover("$portalBase/plain", null, "", "", localClient) }
         verify(discover("plain").source == "legacy_fallback", "Only absent config falls back after GET")
-        failure("PORTAL_INVALID_URL") { discover("bad-portal") }
+        failure("PORTAL_AUTH_URL_INVALID") { discover("bad-portal") }
         failure("PORTAL_BODY_TOO_LARGE") { discover("big-portal") }
         failure("PORTAL_HTTP_ERROR") { discover("error") }
         failure("PORTAL_REDIRECT_LIMIT") { discover("loop") }
@@ -239,6 +239,11 @@ fun main() {
     verify(HealthStatus.authenticationBlocked, "Session reset does not reset compatibility budget")
     HealthStatus.markLoginSuccess()
     verify(HealthStatus.authenticationFailure == null && !HealthStatus.authenticationBlocked, "Success clears protocol failure")
+    count += PortalRegression.run()
+    count += PortalCompatibilityRegression.run()
+    count += PortalXmlRegression.run()
+    count += ClientPortalRegression.run()
+    count += BootstrapCompatibilityRegression.run()
     println("PASS: $count authentication checks")
     kotlin.system.exitProcess(0)
 }

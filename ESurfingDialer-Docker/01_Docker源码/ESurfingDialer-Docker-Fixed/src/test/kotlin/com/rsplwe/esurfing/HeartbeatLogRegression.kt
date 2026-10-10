@@ -167,6 +167,8 @@ object HeartbeatLogRegression {
             val oldThreadAlive = HealthStatus.clientThreadAlive
             val keepCalls = AtomicInteger()
             val frees = AtomicInteger()
+            // 单调时钟允许任意起点；本夹具还覆盖 Long 回绕后的间隔差值。
+            val nanos = java.util.concurrent.atomic.AtomicLong(Long.MAX_VALUE - TimeUnit.SECONDS.toNanos(2))
             var bootstrap = true
             val fake = object : AuthenticationSession {
                 override fun getSessionId() = 17L
@@ -185,18 +187,20 @@ object HeartbeatLogRegression {
                     else -> "terminated"
                 }
                 NetResult.Success(response.toResponseBody())
-            })
+            }, monotonicNanos = nanos::get)
             val worker = Thread(client, "heartbeat-log-regression")
             val authorization = Client::class.java.getDeclaredMethod("authorization", AuthorizationTrigger::class.java)
                 .apply { isAccessible = true }
             fun awaitHeartbeat(label: String, condition: () -> Boolean) {
+                nanos.addAndGet(TimeUnit.SECONDS.toNanos(5))
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
                 while (!condition() && worker.isAlive && System.nanoTime() < deadline) {
-                    // 重复设置直到完成，消除日志通知与 worker 更新 tick 的先后竞争。
-                    client.tick = 0
                     Thread.sleep(10)
                 }
                 verify(label, condition())
+                val settled = System.nanoTime() + TimeUnit.SECONDS.toNanos(1)
+                while (worker.state != Thread.State.TIMED_WAITING && worker.isAlive && System.nanoTime() < settled) Thread.sleep(10)
+                verify("heartbeat attempt finished before clock advances", worker.state == Thread.State.TIMED_WAITING)
             }
             try {
                 States.cancelAuthorization()
@@ -209,8 +213,18 @@ object HeartbeatLogRegression {
                 HealthStatus.resetSession()
                 authorization.invoke(client, AuthorizationTrigger.INITIAL)
                 verify("synthetic login is confirmed before testing periodic heartbeat", HealthStatus.authenticated && keepCalls.get() == 1)
+                // 健康状态保留回拨前的未来时间，心跳调度仍只依赖单调间隔。
+                HealthStatus.lastHeartbeatSuccessAt = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1)
                 worker.start()
-                awaitHeartbeat("periodic heartbeat failure remains WARN", { failed.count == 0L })
+                nanos.addAndGet(TimeUnit.SECONDS.toNanos(5) - 1)
+                Thread.sleep(700)
+                verify("future wall-clock health time and subinterval cannot trigger heartbeat", keepCalls.get() == 1 && failed.count == 1L)
+                nanos.incrementAndGet()
+                val first = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+                while (failed.count != 0L && System.nanoTime() < first) Thread.sleep(10)
+                verify("periodic heartbeat survives monotonic counter wrap and wall-clock rollback state", failed.count == 0L && nanos.get() < 0)
+                while (worker.state != Thread.State.TIMED_WAITING && System.nanoTime() < first) Thread.sleep(10)
+                verify("periodic heartbeat failure remains WARN", failed.count == 0L)
                 verify("subthreshold heartbeat failure preserves authenticated session",
                     HealthStatus.consecutiveHeartbeatFailures.get() == 1 && HealthStatus.authenticated && client.session != null)
                 verify("failed heartbeat retains diagnostic health error", HealthStatus.lastError?.startsWith("heartbeat failed:") == true)

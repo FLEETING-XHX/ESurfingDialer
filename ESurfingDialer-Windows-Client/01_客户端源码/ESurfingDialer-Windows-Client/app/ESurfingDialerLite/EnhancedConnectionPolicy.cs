@@ -34,16 +34,19 @@ public static class EnhancedConnectionPolicy
         return TimeSpan.FromSeconds(Math.Min(120, 30 * multiplier));
     }
 
-    public static string? RecoverableFailureReason(HealthSnapshot? health, DateTimeOffset startedAt, DateTimeOffset now)
+    public static string? RecoverableFailureReason(HealthSnapshot? health, DateTimeOffset startedAt, DateTimeOffset now, string? expectedInstanceId = null)
     {
-        if (health == null || !health.IsCurrentFor(startedAt, now, EnhancedHealthSnapshotMaxAge))
+        if (health == null || !health.IsCurrentFor(startedAt, now, EnhancedHealthSnapshotMaxAge, expectedInstanceId))
             return "健康状态缺失或已过期";
         if (!health.ClientThreadAlive)
             return "认证线程未运行";
         if (!health.NetworkCheckThreadAlive)
             return "网络检测线程未运行";
         if (health.Authenticated)
-            return null;
+            return health.IsConnectedFor(startedAt, now, EnhancedHealthSnapshotMaxAge, expectedInstanceId)
+                ? null : "认证心跳进展已超时或无效";
+        if (health.HasKnownOperation && !health.HasLiveProgress)
+            return "认证操作进展已超时或无效";
         if (health.AuthenticationFailureDeterministic && health.HasAuthenticationFailureFor(startedAt, now, EnhancedHealthSnapshotMaxAge))
             return null; // The core owns bounded protocol retries; restarting would reset its failure budget.
         if (health.HasActiveAuthenticationStage(startedAt, now))

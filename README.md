@@ -12,7 +12,7 @@
 ~~[下载 Windows 客户端 v2.2](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.2/ESurfingDialer-Windows-v2.2-Setup.exe)~~
 
 
-> ![红色 Warning](assets/windows-warning.svg) 
+> ![红色警告](assets/windows-warning.svg)
 >
 > Windows 客户端 v2.2 存在可能导致校园网认证失败的 Bug，目前不建议下载或使用。如果已经安装，建议先保留或恢复原来可用的认证方式。
 >
@@ -48,19 +48,16 @@ Windows 客户端和 Docker 版本使用不同的 Release 标签，方便区分�
 
 ## 项目文档
 
-想了解后续计划、修复进度或测试情况，可以看看[项目文档](项目文档/)文件夹里的说明。
+修复进度、优化和待办现在统一记在一份文件里，按 Docker / Windows 分开看。
 
 | 文档 | 用途 |
 | --- | --- |
-| [v2.3beta 测试说明](项目文档/V2.3BETA-RELEASE.md) | 更新了什么、在哪里下载，以及测试步骤和已验证范围 |
-| [未来开发方向](项目文档/ROADMAP.md) | 后续计划和优先顺序 |
-| [认证修复计划](项目文档/AUTH-REPAIR-PLAN.md) | 认证问题的修复顺序、进度和待补充的现场证据 |
-| [C 项目对照与修复](项目文档/C-REFERENCE-REVIEW.md) | 参考项目的差异、本次修复和后续兼容方向 |
-| [连接恢复与会话修复](项目文档/RECOVERY-REPAIR-REPORT.md) | 切换网络、休眠唤醒、连接恢复和原生会话的修复记录 |
-| [Windows 认证问题记录](项目文档/WINDOWS-AUTH-SESSION-ISSUE.md) | 已收到的问题反馈、日志和仍待确认的原因 |
-| [UI 与连接恢复历史记录](项目文档/UI-AND-RECOVERY.md) | 2.0 版本的界面和连接恢复改动 |
+| [修复与优化总记录](项目文档/修复与优化总记录.md) | 历史改动、当前源码/测试包状态及全部待办 |
+| [文档清单与用途](项目文档/README.md) | Docker、Windows和共用Markdown各自做什么 |
+| [Windows使用说明](项目文档/WINDOWS-USER-GUIDE.md) | 账户、连接、托盘、设置和故障排查 |
+| [Docker部署教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | v1.3软路由图文安装步骤 |
 
-Windows 当前测试版本是 v2.3beta。本地回归检查已经通过，但还不能据此确认真实校园网认证已恢复；现场测试和后续开发进度会记录在项目文档中。
+Windows最新本地包为[beta3 UA2104修复版](项目文档/WINDOWS-BOOTSTRAP-UA-FIX-2026-10-08.md)，10-09用户真实登录、首次确认心跳及外网访问已通过；后续定时心跳、恢复和长期稳定待验。Docker最新本地[beta3门户修复包](项目文档/DOCKER-LOCAL-BETA3-PORTAL-2026-10-08.md)已完成一次真实认证并可上网，持续心跳/恢复/注销仍待验收。两端测试包均未公开发布，正式发布另按授权安排。
 
 ## 致谢
 

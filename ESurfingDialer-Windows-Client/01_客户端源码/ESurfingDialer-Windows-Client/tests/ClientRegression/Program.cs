@@ -8,12 +8,103 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ESurfingDialerLite;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _checks;
     [STAThread]
-    private static void Main(string[] args)
+    private static int Main(string[] args) => RunHarness(args);
+
+    // 不同工作区只验证尺寸和锚点；实际HWND、DPI、拖动与窗口按钮另由UI检查验证。
+    private static void WindowSizingMathChecks()
     {
+        var sizing = typeof(WindowSizing);
+        var pixelType = sizing.GetNestedType("PixelSize", BindingFlags.NonPublic)!;
+        var rectType = sizing.GetNestedType("NativeRect", BindingFlags.NonPublic)!;
+        object Pixel(int width, int height) => Activator.CreateInstance(pixelType, width, height)!;
+        object Rect(int left, int top, int right, int bottom) => Activator.CreateInstance(rectType, left, top, right, bottom)!;
+        (int Width, int Height) SizeOf(object size) =>
+            ((int)pixelType.GetProperty("Width")!.GetValue(size)!, (int)pixelType.GetProperty("Height")!.GetValue(size)!);
+        (int Left, int Top, int Right, int Bottom) BoundsOf(object bounds) =>
+            ((int)rectType.GetField("Left")!.GetValue(bounds)!, (int)rectType.GetField("Top")!.GetValue(bounds)!,
+             (int)rectType.GetField("Right")!.GetValue(bounds)!, (int)rectType.GetField("Bottom")!.GetValue(bounds)!);
+        var fit = sizing.GetMethod("FitSize", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var constrain = sizing.GetMethod("ConstrainSizing", BindingFlags.Static | BindingFlags.NonPublic)!;
+        (int Width, int Height) Fit(double scale, object work) =>
+            SizeOf(fit.Invoke(null, new[] { (object)scale, work, 0.8 })!);
+        bool PreviewRatio((int Width, int Height) size) =>
+            size.Width > 0 && size.Height > 0 && Math.Abs(size.Width - size.Height * 449.0 / 912) <= 0.8;
+        var work = Rect(0, 0, 1920, 1040);
+        foreach (var monitor in new[] { (Width: 1920, Height: 1040), (Width: 2560, Height: 1400),
+            (Width: 3840, Height: 2120), (Width: 800, Height: 640) })
+        {
+            var area = Rect(0, 0, monitor.Width, monitor.Height);
+            var normal = Fit(1, area);
+            Check(PreviewRatio(normal) && normal.Height <= monitor.Height - 24
+                && (monitor.Height < 936 || normal == (449, 912)),
+                "First-open size is 449 by 912 when it fits and remains proportional on smaller work areas " + monitor);
+            var enlarged = Fit(1.2, area);
+            Check(PreviewRatio(enlarged) && enlarged.Height >= normal.Height && enlarged.Height <= monitor.Height - 24,
+                "Enlargement remains proportional and stays inside the work area " + monitor);
+            var minimum = Fit(0.1, area);
+            Check(PreviewRatio(minimum) && minimum.Height <= normal.Height
+                && (monitor.Height < 754 || Math.Abs(minimum.Height - 730) <= 1),
+                "Minimum size stays usable and adapts to small work areas " + monitor);
+            var maximum = Fit(double.MaxValue, area);
+            Check(PreviewRatio(maximum) && maximum.Width <= monitor.Width - 24 && maximum.Height <= monitor.Height - 24,
+                "Expanded size preserves the preview ratio without covering the taskbar " + monitor);
+            var small = Fit(1, Rect(-200, 100, -100, 300));
+            Check(PreviewRatio(small) && small.Width <= 76 && small.Height <= 176 && small.Height < 730,
+                "Small offset work areas may shrink below the normal minimum while preserving the preview ratio " + monitor);
+        }
+
+        var initial = Fit(1, work);
+        var roomy = Rect(0, 0, 3840, 2160);
+        for (var edge = 1; edge <= 8; edge++)
+        {
+            const int left = 600, top = 600;
+            var right = left + initial.Width;
+            var bottom = top + initial.Height;
+            var proposedLeft = edge is 1 or 4 or 7 ? left - 80 : left;
+            var proposedRight = edge is 2 or 5 or 8 ? right + 80 : right;
+            var proposedTop = edge is 3 or 4 or 5 ? top - 120 : top;
+            var proposedBottom = edge is 6 or 7 or 8 ? bottom + 120 : bottom;
+            var adjusted = BoundsOf(constrain.Invoke(null, new[] { Rect(proposedLeft, proposedTop, proposedRight, proposedBottom),
+                (object)edge, roomy, 0.8, Pixel(initial.Width, initial.Height) })!);
+            var size = (Width: adjusted.Right - adjusted.Left, Height: adjusted.Bottom - adjusted.Top);
+            var anchored = edge switch
+            {
+                1 => adjusted.Right == right && Math.Abs(adjusted.Top + adjusted.Bottom - top - bottom) <= 1,
+                2 => adjusted.Left == left && Math.Abs(adjusted.Top + adjusted.Bottom - top - bottom) <= 1,
+                3 => adjusted.Bottom == bottom && Math.Abs(adjusted.Left + adjusted.Right - left - right) <= 1,
+                4 => adjusted.Right == right && adjusted.Bottom == bottom,
+                5 => adjusted.Left == left && adjusted.Bottom == bottom,
+                6 => adjusted.Top == top && Math.Abs(adjusted.Left + adjusted.Right - left - right) <= 1,
+                7 => adjusted.Right == right && adjusted.Top == top,
+                8 => adjusted.Left == left && adjusted.Top == top,
+                _ => false
+            };
+            Check(PreviewRatio(size) && anchored,
+                "Drag edge " + edge + " keeps the opposite anchor and the 449 by 912 preview ratio");
+        }
+    }
+
+    private static void Run(string[] args)
+    {
+        if (args.Contains("--idle")) { Console.ReadLine(); return; }
+        if (args.Length == 2 && args[0] == "--instance")
+        {
+            using var instance = new SingleInstanceCoordinator(args[1], () => { });
+            Console.WriteLine(instance.IsOwner ? "owner" : "secondary");
+            if (instance.IsOwner) Console.ReadLine();
+            return;
+        }
+        if (args.Contains("--failure-fixture") || args.Contains("--dispatcher-failure-fixture"))
+        {
+            FailureFixture(args);
+            return;
+        }
+        if (args.Contains("--ui-only")) { UiOnlyChecks(args); return; }
+        WindowSizingMathChecks();
         var output = Path.GetFullPath(args.FirstOrDefault() ?? "artifacts/ui");
         Directory.CreateDirectory(output);
         Environment.SetEnvironmentVariable("ESURFING_CLIENT_HOME", Path.Combine(output, "test-data"));
@@ -59,12 +150,22 @@ internal static class Program
         var healthySnapshot = new HealthSnapshot
         {
             ProcessAlive = true, ClientThreadAlive = true, NetworkCheckThreadAlive = true, Authenticated = true,
-            LastUpdatedAt = now.ToUnixTimeSeconds(), LastHeartbeatSuccessAt = now.ToUnixTimeSeconds()
+            LastUpdatedAt = now.ToUnixTimeSeconds(), LastHeartbeatSuccessAt = now.ToUnixTimeSeconds(),
+            AuthenticationStage = "heartbeat-wait", ClientProgressAgeMillis = 0, ClientProgressTimeoutMillis = 330_000
         };
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null, "Healthy core does not trigger enhanced recovery");
-        healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-11).ToUnixTimeSeconds();
-        Check(healthySnapshot.IsConnectedFor(now.AddMinutes(-1), now, EnhancedConnectionPolicy.EnhancedHealthSnapshotMaxAge), "Authenticated current health stays connected when heartbeat timestamp is stale");
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == null, "Authenticated core remains connected when heartbeat timestamp is stale");
+        healthySnapshot.LastHeartbeatSuccessAt = now.AddMinutes(-4).ToUnixTimeSeconds();
+        healthySnapshot.ClientProgressAgeMillis = 240_000;
+        Check(healthySnapshot.IsConnectedFor(now.AddMinutes(-5), now), "Negotiated long heartbeat interval remains connected within its monotonic deadline");
+        healthySnapshot.ClientProgressAgeMillis = 330_000;
+        Check(!healthySnapshot.IsConnectedFor(now.AddMinutes(-5), now) &&
+            EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-5), now) != null,
+            "Expired heartbeat progress is neither connected nor ignored by recovery");
+        healthySnapshot.ClientProgressAgeMillis = -1;
+        Check(!healthySnapshot.IsConnectedFor(now.AddMinutes(-5), now), "Missing progress cannot certify an authenticated session");
+        healthySnapshot.ClientProgressAgeMillis = 0;
+        healthySnapshot.ClientProgressTimeoutMillis = 90_000;
+        healthySnapshot.AuthenticationStage = null;
         healthySnapshot.LastHeartbeatSuccessAt = now.ToUnixTimeSeconds();
         healthySnapshot.Authenticated = false;
         healthySnapshot.LastHeartbeatSuccessAt = now.AddSeconds(-46).ToUnixTimeSeconds();
@@ -73,17 +174,20 @@ internal static class Program
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-1), now) == "认证心跳长时间未确认", "Unauthenticated core with stale heartbeat triggers enhanced recovery");
         healthySnapshot.AuthenticationStage = "session";
         healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(-50).ToUnixTimeSeconds();
+        healthySnapshot.ClientProgressAgeMillis = 50_000;
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) == null,
             "In-flight authentication is not restarted before bounded stage grace");
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddSeconds(-40), now) != null,
-            "Previous process stage cannot suppress recovery");
-        healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(1).ToUnixTimeSeconds();
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
-            "Future stage timestamp cannot suppress recovery");
-        healthySnapshot.AuthenticationStageStartedAt = now.AddSeconds(-90).ToUnixTimeSeconds();
+        healthySnapshot.ProcessInstanceId = "current-run";
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now, "other-run") != null,
+            "Another process instance cannot suppress recovery");
+        healthySnapshot.AuthenticationStageStartedAt = now.AddHours(1).ToUnixTimeSeconds();
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now, "current-run") == null,
+            "Wall-clock changes do not invalidate live monotonic operation progress");
+        healthySnapshot.ClientProgressAgeMillis = 90_000;
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
             "Hung authentication stage expires at ninety seconds");
         healthySnapshot.AuthenticationStageStartedAt = now.ToUnixTimeSeconds();
+        healthySnapshot.ClientProgressAgeMillis = 0;
         healthySnapshot.AuthenticationStage = "unknown";
         Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) != null,
             "Unknown stage cannot grant authentication grace");
@@ -120,18 +224,24 @@ internal static class Program
         Check(ClientLog.Redact("old-regression-secret") == "old-regression-secret"
               && ClientLog.Redact("new-regression-secret") == "[REDACTED]", "Log secret cache replaces stale values");
 
+        var previousUiContext = SynchronizationContext.Current;
         var app = new System.Windows.Application();
-        var window = new MainWindow(previewMode: true);
+        app.DispatcherUnhandledException += (_, e) => { _dispatcherFailure = e.Exception; e.Handled = true; };
+        SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
+        var browserLaunches = new List<System.Diagnostics.ProcessStartInfo>();
+        var rejectBrowserLaunch = false;
+        var window = new MainWindow(true, info =>
+        {
+            browserLaunches.Add(info);
+            if (rejectBrowserLaunch) throw new InvalidOperationException("synthetic browser launch failure");
+        });
         try
         {
+            EmbeddedFontChecks(window, output);
             var root = (FrameworkElement)window.Content;
             void Render(string name)
             {
-                root.Measure(new Size(484, 800)); root.Arrange(new Rect(0, 0, 484, 800)); root.UpdateLayout();
-                var image = new RenderTargetBitmap(484, 800, 96, 96, PixelFormats.Pbgra32);
-                image.Render(root);
-                var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
-                using var stream = File.Create(Path.Combine(output, name + ".png")); encoder.Save(stream);
+                RenderPenPage(window, output, name, ((UIElement)window.FindName("SettingsPage")).Visibility == Visibility.Visible ? 940 : 860);
             }
             object? Call(string method, params object[] parameters) =>
                 typeof(MainWindow).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, parameters);
@@ -169,10 +279,10 @@ internal static class Program
             Check(!summary.Focusable, "Account summary is not an interactive button");
             summary.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent });
             Check(Node<UIElement>("AccountOverlay").Visibility == Visibility.Collapsed, "Account summary click does not open management");
-            Check(Node<TextBlock>("DownloadSpeedText").Foreground == window.FindResource("Green") &&
-                  Node<TextBlock>("UploadSpeedText").Foreground == window.FindResource("Coral"), "Download and upload use distinct semantic colors");
-            Check(Node<TextBlock>("DownloadSpeedText").Foreground == Node<System.Windows.Shapes.Polyline>("DownloadLine").Stroke &&
-                  Node<TextBlock>("UploadSpeedText").Foreground == Node<System.Windows.Shapes.Polyline>("UploadLine").Stroke, "Rate colors match trend lines");
+            Check(((SolidColorBrush)Node<TextBlock>("DownloadSpeedText").Foreground).Color == Color.FromRgb(0x9D, 0xD7, 0xAB) &&
+                  ((SolidColorBrush)Node<TextBlock>("UploadSpeedText").Foreground).Color == Color.FromRgb(0xF0, 0xA2, 0x94), "Rate values match their download and upload colors in the approved Pen design");
+            Check(((SolidColorBrush)Node<System.Windows.Shapes.Shape>("DownloadLine").Stroke).Color == Color.FromRgb(0x9D, 0xD7, 0xAB) &&
+                  ((SolidColorBrush)Node<System.Windows.Shapes.Shape>("UploadLine").Stroke).Color == Color.FromRgb(0xF0, 0xA2, 0x94), "Trend lines retain distinct soft colors from the updated Pen design");
             Check(Node<ContentControl>("CampusIconControl").Content == window.FindResource("PenCampusIcon"), "Campus card uses Pen icon");
             Render("home");
             Check(window.FindName("StatusDot") == null && window.FindName("StatusText") == null,
@@ -207,7 +317,7 @@ internal static class Program
                     var top = value.TransformToAncestor(container).Transform(new Point()).Y;
                     Check(value.ActualHeight + 1 >= natural.DesiredSize.Height &&
                           top >= 0 && top + value.ActualHeight <= container.ActualHeight,
-                        name + " fits natural glyph height and card: " + font);
+                        $"{name} fits natural glyph height and card: {font} (top={top:F2}, glyph={value.ActualHeight:F2}/{natural.DesiredSize.Height:F2}, card={container.ActualHeight:F2})");
                 }
             }
             window.FontFamily = originalFont;
@@ -222,12 +332,13 @@ internal static class Program
             Render("home");
             var navIcons = new[] { "Home", "Logs", "Settings" }.Select(n => Node<ContentControl>(n + "NavIcon")).ToArray();
             var dpi = VisualTreeHelper.GetDpi(root);
-            Check(navIcons.All(n => Math.Abs(n.ActualWidth - 21) <= 1 / dpi.DpiScaleX
-                                   && Math.Abs(n.ActualHeight - 21) <= 1 / dpi.DpiScaleY),
+            Check(navIcons.All(n => Math.Abs(n.ActualWidth - 20) <= 1 / dpi.DpiScaleX
+                                   && Math.Abs(n.ActualHeight - 20) <= 1 / dpi.DpiScaleY),
                 "Navigation icons share Pen dimensions");
             var iconTop = navIcons[0].TransformToAncestor(root).Transform(new Point()).Y;
             Check(navIcons.All(n => Math.Abs(n.TransformToAncestor(root).Transform(new Point()).Y - iconTop) < 0.1), "Navigation icons share baseline");
-            Check(Node<FrameworkElement>("SpeedChart").ActualWidth == 412 && Node<FrameworkElement>("SpeedChart").ActualHeight == 28, "Trend chart matches Pen geometry");
+            Check(Math.Abs(Node<FrameworkElement>("SpeedChart").ActualWidth - 334.544) <= 1 &&
+                Math.Abs(Node<FrameworkElement>("SpeedChart").ActualHeight - 30.59) <= 1, "Trend chart matches the updated Pen geometry within layout rounding");
             Check(Node<ContentControl>("LogsNavIcon").Content == window.FindResource("PenLogIcon"), "Navigation uses exported Pen glyphs");
             Call("ShowPage", Node<UIElement>("LogsPage")); Render("logs");
             Check(Node<Button>("LogsNavButton").Foreground == window.FindResource("Coral"), "Navigation active color");
@@ -238,9 +349,10 @@ internal static class Program
             liveConfig.AutoStart = true;
             Call("ApplySettings"); Render("settings-expanded");
             Check(Node<Border>("MinimizeSettingRow").Visibility == Visibility.Visible, "Secondary setting displayed");
-            var bottom = Node<FrameworkElement>("SettingsPage");
-            var settingPanel = (StackPanel)((Grid)bottom).Children[0];
-            Check(settingPanel.DesiredSize.Height <= bottom.ActualHeight, "Expanded settings fit above navigation");
+            window.Show();
+            CompactSettingsChecks(window);
+            ServiceLinkChecks(window, browserLaunches, () => rejectBrowserLaunch = true);
+            Render("settings-expanded");
             Call("ShowPage", Node<UIElement>("HomePage"));
             Node<Button>("AccountManagementButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(Node<UIElement>("AccountOverlay").Visibility == Visibility.Visible, "Management card still opens account sheet");
@@ -275,6 +387,16 @@ internal static class Program
             var notice = Node<Border>("Notice");
             Check(notice.HorizontalAlignment == HorizontalAlignment.Right && notice.ActualWidth < 300 && Node<TextBlock>("NoticeText").TextAlignment == TextAlignment.Right, "Notice fits content and aligns right");
             Call("OpenLogsButton_Click", window, new RoutedEventArgs()); Render("detailed-logs");
+            WindowHealthChecks(window);
+            PasswordChecks(window);
+            StatusChecks(window, output);
+            AccountFailureChecks(window);
+            HarnessChecks(output);
+            ProcessBoundaryChecks();
+            LogBoundsChecks(window);
+            ConfigRetryChecks();
+            if (args.Contains("--stress")) ResourceStressChecks(window, output);
+            InstanceChecks(output);
             ClientLog.Write(AppPaths.CoreLogFile, "password=" + secret + " test-account-001 ticket=sample-ticket");
             var zip = LogExporter.Export(Path.Combine(output, "regression-logs.zip"));
             using var archive = ZipFile.OpenRead(zip);
@@ -287,12 +409,101 @@ internal static class Program
                 Check(!text.Contains(secret) && !text.Contains("test-account-001") && !text.Contains("sample-ticket"), "Export redaction: " + entry.FullName);
             }
         }
-        finally { window.ShutdownClient(); window.Close(); app.Shutdown(); }
-        if (args.Contains("--core")) SupervisorChecks(store.Load());
+        finally
+        {
+            try { window.ShutdownClient(); window.Close(); app.Shutdown(); }
+            finally { SynchronizationContext.SetSynchronizationContext(previousUiContext); }
+        }
+        if (args.Contains("--core"))
+        {
+            async Task RecoveryContinuation() { await Task.Yield(); }
+            Check(RecoveryContinuation().Wait(TimeSpan.FromSeconds(2)),
+                "Process recovery continuation can run after WPF shutdown");
+            SupervisorChecks(store.Load());
+        }
         Console.WriteLine($"PASS: {_checks} checks; WPF renders: {output}");
     }
+    private static System.Diagnostics.Process Worker(params string[] arguments)
+    {
+        var info = new System.Diagnostics.ProcessStartInfo("dotnet") {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        info.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+        var process = System.Diagnostics.Process.Start(info)!;
+        RegisterWorker(process);
+        return process;
+    }
+
+    private static void InstanceChecks(string output)
+    {
+        using var activated = new ManualResetEventSlim();
+        var directory = Path.Combine(output, "instance-fixture");
+        using (var owner = new SingleInstanceCoordinator(directory, () => activated.Set()))
+        {
+            Check(owner.IsOwner, "First instance owns its configuration directory");
+            using var second = Worker("--instance", directory);
+            try {
+                Check(second.WaitForExit(5000) && second.StandardOutput.ReadToEnd().Trim() == "secondary",
+                    "Second process cannot own the same configuration");
+            } finally { if (!second.HasExited) { second.Kill(entireProcessTree: true); second.WaitForExit(); } }
+            Check(activated.Wait(3000), "Second launch signals existing instance activation");
+            using var other = new SingleInstanceCoordinator(Path.Combine(output, "other-instance-fixture"), () => { });
+            Check(other.IsOwner, "Independent configuration directories may run concurrently");
+        }
+        using var reopened = new SingleInstanceCoordinator(directory, () => { });
+        Check(reopened.IsOwner, "Normal shutdown releases the instance lock");
+    }
+
+    private static void WindowHealthChecks(MainWindow window)
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        var dialer = (DialerCoreProcess)typeof(MainWindow).GetField("_dialer", flags)!.GetValue(window)!;
+        var worker = Worker("--idle");
+        var now = DateTimeOffset.UtcNow;
+        typeof(DialerCoreProcess).GetField("_process", flags)!.SetValue(dialer, worker);
+        typeof(DialerCoreProcess).GetField("_requested", flags)!.SetValue(dialer, true);
+        typeof(DialerCoreProcess).GetField("_startedAt", flags)!.SetValue(dialer, now.AddMinutes(-2));
+        typeof(DialerCoreProcess).GetField("_instanceId", flags)!.SetValue(dialer, "ui-fixture");
+        var health = new HealthSnapshot { ProcessAlive = true, ProcessInstanceId = "ui-fixture", Authenticated = true,
+            ClientThreadAlive = false, NetworkCheckThreadAlive = true, LastUpdatedAt = now.ToUnixTimeSeconds(),
+            LastHeartbeatSuccessAt = now.ToUnixTimeSeconds(), AuthenticationStage = "heartbeat-wait",
+            ClientProgressAgeMillis = 0, ClientProgressTimeoutMillis = 330_000 };
+        Directory.CreateDirectory(AppPaths.DataDirectory);
+        void Refresh() {
+            File.WriteAllText(AppPaths.HealthFile, JsonSerializer.Serialize(health));
+            ((Task)typeof(MainWindow).GetMethod("RefreshHealthAsync", flags)!.Invoke(window, null)!).GetAwaiter().GetResult();
+        }
+        int Count(string name) => (int)typeof(MainWindow).GetField(name, flags)!.GetValue(window)!;
+        try
+        {
+            typeof(MainWindow).GetField("_nextRecoveryAllowedAt", flags)!.SetValue(window, now.AddHours(1));
+            Refresh(); Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") == 2 &&
+                (string)typeof(MainWindow).GetField("_currentStatus", flags)!.GetValue(window)! != "已连接",
+                "Dead authenticated thread accumulates consecutive faults without reporting connected");
+            typeof(MainWindow).GetField("_automaticRecoveryAttempts", flags)!.SetValue(window, EnhancedConnectionPolicy.MaximumAutomaticRecoveries);
+            typeof(MainWindow).GetField("_nextRecoveryAllowedAt", flags)!.SetValue(window, DateTimeOffset.MinValue);
+            Refresh();
+            Check((bool)typeof(MainWindow).GetField("_automaticRecoveryExhausted", flags)!.GetValue(window)!,
+                "Invalid authenticated snapshot does not clear recovery limit");
+            health.ClientThreadAlive = true; health.NetworkCheckThreadAlive = false;
+            Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") >= 4, "Dead network thread also preserves fault history");
+            health.NetworkCheckThreadAlive = true; health.ProcessInstanceId = "another-process";
+            Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") >= 5, "Other process health cannot reset recovery budget");
+            health.ProcessInstanceId = "ui-fixture";
+            Refresh();
+            Check(Count("_consecutiveUnhealthyChecks") == 0 && Count("_automaticRecoveryAttempts") == 0,
+                "Genuine healthy confirmation resets anomaly and recovery budgets");
+        }
+        finally { dialer.Stop(); }
+    }
+
     private static void Check(bool condition, string name)
     {
+        if (_dispatcherFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(_dispatcherFailure).Throw();
         if (!condition) throw new Exception("FAIL: " + name);
         _checks++; Console.WriteLine("PASS: " + name);
     }
@@ -378,6 +589,7 @@ internal static class Program
             Wait(() => HealthSnapshot.Load()?.IsCurrentFor(core.StartedAt, DateTimeOffset.UtcNow) == true, "Fresh health after manual restart");
             core.Stop();
             Check(!core.IsRunning && !core.IsRequested, "Clean stop releases the core process");
+            RecoveryStartFailureChecks(config);
         }
         finally
         {
@@ -385,5 +597,60 @@ internal static class Program
             Environment.SetEnvironmentVariable("NETWORK_CHECK_URLS", oldUrl);
             server.GetAwaiter().GetResult();
         }
+    }
+
+    private static void RecoveryStartFailureChecks(ClientConfig config)
+    {
+        var starts = 0;
+        var failures = 0;
+        using var failed = new ManualResetEventSlim();
+        var holdRetry = false;
+        var core = new DialerCoreProcess(process => {
+            Interlocked.Increment(ref starts);
+            if (Volatile.Read(ref failures) > 0) {
+                Interlocked.Decrement(ref failures); failed.Set();
+                throw new IOException("synthetic start failure");
+            }
+            process.Start();
+        }, attempt => attempt == 1 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(holdRetry ? 2000 : 100));
+        var password = PasswordProtector.Unprotect(config.ProtectedPassword);
+        try
+        {
+            core.StartAsync(config, password, _ => { }).GetAwaiter().GetResult();
+            var originalId = core.InstanceId;
+            failures = 1;
+            Check(core.RestartForRecoveryAsync(config, password, _ => { }).GetAwaiter().GetResult()
+                && starts == 3 && core.IsRequested && core.IsRunning && core.InstanceId != originalId,
+                "Health restart retains intent and retries one failed start successfully with a new instance id");
+
+            failures = 10; failed.Reset(); holdRetry = true;
+            var cancelled = core.RestartForRecoveryAsync(config, password, _ => { });
+            Check(failed.Wait(5000), "Recovery reaches failed-start backoff before manual stop");
+            core.Stop();
+            var beforeStop = starts;
+            Check(!cancelled.GetAwaiter().GetResult() && !core.IsRequested && !core.IsRunning && starts == beforeStop,
+                "Manual stop cancels failed-start retry without resurrecting the account");
+
+            failures = 0;
+            var switched = new ClientConfig { UserName = "switched-fixture" };
+            core.StartAsync(switched, "switched-fixture-password", _ => { }).GetAwaiter().GetResult();
+            var switchedId = core.InstanceId;
+            Check(core.IsRequested && core.IsRunning && switchedId != originalId, "Manual account switch owns a fresh process after cancellation");
+            failures = 10; failed.Reset();
+            var disabled = core.RestartForRecoveryAsync(switched, "switched-fixture-password", _ => { });
+            Check(failed.Wait(5000), "Recovery reaches failed-start backoff before disabling enhancement");
+            core.EnhancedConnection = false;
+            Check(!disabled.GetAwaiter().GetResult() && !core.IsRequested && !core.IsRunning,
+                "Disabling enhancement cancels failed-start recovery immediately");
+
+            core.EnhancedConnection = true; failures = 0; holdRetry = false;
+            core.StartAsync(config, password, _ => { }).GetAwaiter().GetResult();
+            var beforeLimit = starts;
+            failures = 10;
+            Check(!core.RestartForRecoveryAsync(config, password, _ => { }).GetAwaiter().GetResult()
+                && starts - beforeLimit == EnhancedConnectionPolicy.MaximumAutomaticRecoveries
+                && !core.IsRequested && !core.IsRunning, "Repeated startup failure exhausts bounded recovery and clears intent");
+        }
+        finally { core.Stop(); }
     }
 }

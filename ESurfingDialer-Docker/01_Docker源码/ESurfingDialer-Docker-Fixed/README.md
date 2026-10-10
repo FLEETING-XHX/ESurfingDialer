@@ -2,7 +2,7 @@
 
 广东电信天翼校园认证客户端的 Docker 修复版，基于 `ESurfingDialer 1.2.0` 源码改造，重点解决容器长期运行后认证线程失效、设备身份变化、心跳异常后无法自动恢复的问题。v1.3 新增了“认证有效期预测 + 安全窗口重认证”。
 
-当前源码版本为v1.4.0-beta.3；最新本地包`beta3-portal-fix-20261008`包含beta2、09-28/29及属性查询串/等值auth兼容修复，用户首轮认证与上网通过，持续心跳/恢复/长期资源仍待验收。正式用户使用已发布v1.3，见[离线说明](README_OFFLINE.md)；beta3操作见[测试说明](README_BETA.md)，包摘要与现场结果见[交付记录](README_BETA.md)，剩余任务见[统一待办](README_BETA.md)。
+当前源码与本次发布版本统一为 **v2.4**。下载 `ESurfingDialer-Docker-v2.4.zip`，仅支持 amd64，离线安装步骤见[版本部署说明](README_RELEASE.md)。本包汇入 beta3 门户、恢复和日志修复，以及 10-10 审查修复。此前用户已完成一次真实认证与上网，v2.4 的真实恢复、注销与长期稳定仍待验收；历史 v1.3 / beta 包保持各自快照。
 
 ## 配置账户
 
@@ -24,7 +24,13 @@ AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6
 
 手动编辑账号密码时，按 Compose 双引号格式填写：美元符号 `$` 写成 `$$`，反斜线 `\` 写成 `\\`，双引号 `"` 写成 `\"`；空格、单引号和 `#` 保留在双引号内。例如实际密码 `ab$cd` 写成 `DIALER_PASSWORD="ab$$cd"`。新版源码中的安装脚本会自动转义交互输入；已有 `.env` 不会自动重写凭据。
 
+10-10源码安装器追加缺失的自动重认证配置项时，先写换行分隔符，避免已有`.env`末行无换行时损坏密码或镜像标签；已配置的开关和安全窗口值保持。此修复进入 v2.4，历史离线包保持原样。可在源码目录运行 `python scripts/check-installer.py`，用Docker替身和合成配置执行31组隔离回归；也已接入Gradle的`installerRegression`及`check`任务，不访问真实配置或容器。
+
 ## 源码构建与启动
+
+v2.4 已补五项审查修复：构建上下文排除根目录及子目录中的私有`.env`/环境配置备份，仅保留根目录`.env.example`模板；门户正文的nonce/时间戳不再重置退避，有效认证配置或门户身份变化仍允许提前重试；启动参数保留选项样式和带双引号的密码；周期心跳使用单调时钟；日志进程提前退出时，入口终止Java并非零退出，Java在五秒宽限后仍未结束则强制终止。正常退出保留Java退出码并有界等待日志收尾。
+
+这些行为已加入`check`：`authenticationRegression`验证门户退避和单调心跳，`entrypointRegression`用生产脚本及Java/su-exec替身检查两个启动分支、日志故障与退出，`commandLineRegression`再用真实Commons CLI解析替身捕获的参数。详细依据、验证和未覆盖边界见[本次审查修复记录](../../../项目文档/DOCKER-CODE-REVIEW-FIXES-2026-10-10.md)。
 
 开发者在线构建时显式加载构建覆盖文件；默认 `docker-compose.yml` 只用于部署，不包含 build：
 
@@ -109,3 +115,5 @@ Windows 命令：
 ```bat
 gradlew.bat shadowJar
 ```
+
+恢复达到上限时抛出专用异常，先释放嵌套会话锁，再由现有线程异常处理器退出 JVM；shutdown hook 可以完成会话清理。`recoveryExitRegression` 用真实子 JVM、禁止网络与原生加载的会话替身验证退出码 1、清理一次及锁释放。

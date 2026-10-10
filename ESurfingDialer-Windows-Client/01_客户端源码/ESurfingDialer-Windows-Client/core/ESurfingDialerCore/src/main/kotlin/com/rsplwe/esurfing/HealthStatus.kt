@@ -13,14 +13,29 @@ import kotlin.concurrent.thread
 object HealthStatus {
     private val logger: Logger = Logger.getLogger(HealthStatus::class.java)
     private val writeSignal = Semaphore(0)
-    private data class AuthenticationProgress(val stage: String, val startedAt: Long)
+    private data class AuthenticationProgress(val stage: String, val startedAt: Long,
+                                              val startedNanos: Long, val timeoutMillis: Long)
     @Volatile private var authenticationProgress: AuthenticationProgress? = null
+    val processInstanceId: String = System.getenv("CORE_INSTANCE_ID")?.takeIf {
+        Regex("[0-9a-fA-F-]{36}").matches(it)
+    } ?: java.util.UUID.randomUUID().toString()
+    const val OPERATION_TIMEOUT_MILLIS = 90_000L
 
     fun beginAuthenticationStage(stage: String) {
-        require(stage in setOf("portal", "session", "ticket", "login", "confirm"))
-        authenticationProgress = AuthenticationProgress(stage, now())
+        require(stage in setOf("portal", "session", "ticket", "login", "confirm", "heartbeat", "terminate", "cleanup"))
+        authenticationProgress = AuthenticationProgress(stage, now(), System.nanoTime(), OPERATION_TIMEOUT_MILLIS)
         requestWrite()
     }
+
+    fun waitForHeartbeat(seconds: Long) {
+        val timeout = seconds.coerceIn(1, RuntimeConfig.heartbeatIntervalMaxSeconds) * 1000 + OPERATION_TIMEOUT_MILLIS
+        authenticationProgress = AuthenticationProgress("heartbeat-wait", now(), System.nanoTime(), timeout)
+        requestWrite()
+    }
+
+    internal fun progressAgeMillis(): Long = authenticationProgress?.let {
+        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - it.startedNanos).coerceAtLeast(0)
+    } ?: -1
 
     private fun endAuthenticationStage() {
         authenticationProgress = null
@@ -90,6 +105,7 @@ object HealthStatus {
                 """
                 {
                   "processAlive": ${States.isRunning},
+                  "processInstanceId": "$processInstanceId",
                   "clientThreadAlive": $clientThreadAlive,
                   "networkCheckThreadAlive": $networkCheckThreadAlive,
                   "authenticated": $authenticated,
@@ -98,6 +114,8 @@ object HealthStatus {
                   "authenticationBlocked": $authenticationBlocked,
                   "authenticationStage": ${progress?.let { "\"${it.stage}\"" } ?: "null"},
                   "authenticationStageStartedAt": ${progress?.startedAt ?: 0},
+                  "clientProgressAgeMillis": ${progress?.let { TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - it.startedNanos).coerceAtLeast(0) } ?: -1},
+                  "clientProgressTimeoutMillis": ${progress?.timeoutMillis ?: 0},
                   "enhancedConnection": ${RuntimeConfig.isEnhancedConnectionEnabled()},
                   "networkCheckIntervalSeconds": ${RuntimeConfig.networkCheckIntervalSeconds},
                   "healthWriteIntervalSeconds": ${RuntimeConfig.healthWriteIntervalSeconds},
@@ -127,8 +145,8 @@ object HealthStatus {
         consecutivePortalDetections.set(0)
     }
 
-    fun markLoginSuccess() {
-        endAuthenticationStage()
+    fun markLoginSuccess(heartbeatSeconds: Long = RuntimeConfig.heartbeatIntervalMaxSeconds) {
+        waitForHeartbeat(heartbeatSeconds)
         clearAuthenticationFailure()
         authenticated = true
         lastLoginSuccessAt = now()
@@ -138,8 +156,8 @@ object HealthStatus {
         requestWrite()
     }
 
-    fun markHeartbeatSuccess() {
-        endAuthenticationStage()
+    fun markHeartbeatSuccess(heartbeatSeconds: Long = RuntimeConfig.heartbeatIntervalMaxSeconds) {
+        waitForHeartbeat(heartbeatSeconds)
         clearAuthenticationFailure()
         authenticated = true
         lastHeartbeatSuccessAt = now()

@@ -1,21 +1,28 @@
 #define MyAppName "ESurfingDialer Lite"
-#define MyAppVersion "2.3beta"
+#ifndef MyAppVersion
+  #define MyAppVersion "2.3beta.3"
+#endif
+#ifndef MyAppFileVersion
+  #define MyAppFileVersion "2.3.0.3"
+#endif
 #define MyAppPublisher "ESurfingDialer Lite"
 #define MyAppExeName "ESurfingDialerLite.exe"
-#define SourceDir "..\dist\ESurfingDialerLite"
+#ifndef SourceDir
+  #define SourceDir "..\dist\v2.3beta.3\ESurfingDialerLite"
+#endif
 
 [Setup]
 AppId={{F59B6C7D-C53B-4DD8-B51F-745A74223C9D}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-VersionInfoVersion=2.3.0.0
+VersionInfoVersion={#MyAppFileVersion}
 VersionInfoProductTextVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\ESurfingDialer Lite
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-OutputDir=..\dist
-OutputBaseFilename=ESurfingDialer-Windows-v2.3beta-Setup
+OutputDir=..\dist\v{#MyAppVersion}
+OutputBaseFilename=ESurfingDialer-Windows-v{#MyAppVersion}-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -24,7 +31,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=..\resources\icons\ESurfingDialer-default.ico
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional tasks:"; Flags: unchecked
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加选项："; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -34,4 +41,4 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent

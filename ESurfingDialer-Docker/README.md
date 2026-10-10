@@ -11,7 +11,7 @@
 
 - 最新离线部署包：请前往统一仓库的 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 页面。
 
-正式离线版为v1.3；最新本地beta3为`beta3-portal-fix-20261008`，未公开发布。已包含09-28/29及10-08门户兼容修复，用户一次登录/首次keep及上网通过，长期/恢复/注销仍待验收；[测试说明](01_Docker源码/ESurfingDialer-Docker-Fixed/README_BETA.md)保留包摘要与证据。使用正式包见[中文图文教程](02_使用教程/ESurfingDialer-Docker部署教程.md)，beta3安装默认只创建不启动，共存与交替启动见[测试说明](01_Docker源码/ESurfingDialer-Docker-Fixed/README_BETA.md)。
+当前统一发布版本为 **v2.4**，附件是 `ESurfingDialer-Docker-v2.4.zip`，仅支持 amd64 / x86_64。安装默认只创建、不启动；停止旧认证容器后显式启动。安装、迁移与配置保留见[v2.4 部署说明](01_Docker源码/ESurfingDialer-Docker-Fixed/README_RELEASE.md)。此前 beta3 首次认证已通过，v2.4 的恢复、注销与长期稳定仍待验收。
 
 ## 适用场景
 
@@ -33,16 +33,18 @@
 下载 Release 中的离线包，上传到软路由后解压：
 
 ```sh
-unzip ESurfingDialer-Docker-v1.3.zip
-cd ESurfingDialer-Itsuwarii-Docker-Fixed-v1.3
+unzip ESurfingDialer-Docker-v2.4.zip
+cd ESurfingDialer-Docker-v2.4
 sh install.sh
+# 停止旧认证容器后再执行：
+sh start.sh
 ```
 
-发布附件名称为 `ESurfingDialer-Docker-v1.3.zip`；解压后的目录名以实际包内容为准，进入包含 `install.sh` 的目录。安装脚本会检测架构、导入本地镜像、生成 `.env`、创建数据目录并启动容器。历史包安装器尚未包含 09-29 的特殊字符凭据转义修复，相关字符填写方法见[离线说明](01_Docker源码/ESurfingDialer-Docker-Fixed/README_OFFLINE.md)。
+包内已包含镜像，不需要从公网拉取。v2.4 容器名为 `ESurfingDialer-v2.4`；保留旧部署目录、配置和设备身份，不要同时启动两个认证版本。
 
 ## 开发入口
 
-Docker源码、当前包与剩余验收见[测试说明](01_Docker源码/ESurfingDialer-Docker-Fixed/README_BETA.md)。本地main仅整合Docker，两端共享文档整理保留在原工作分支。
+修复、优化和待办统一见[总记录](../项目文档/修复与优化总记录.md#docker)；各Markdown的用途见[文档清单](../项目文档/README.md)。
 
 ## 致谢
 

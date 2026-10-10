@@ -9,6 +9,7 @@
 
 # Release packages are uploaded to GitHub Releases
 *.zip
+!/项目文档/归档/历史Markdown_20261008.zip
 *.tar
 *.tar.gz
 **/*.exe
@@ -26,3 +27,12 @@ Desktop.ini
 /项目文档/PROJECT-GUIDE.md
 /项目文档/协作规则.md
 /项目文档/DEVELOPMENT-HANDOFF.md
+
+# Local beta deployment artifacts
+/ESurfingDialer-Docker/00_最终部署包/Docker_v1.4.0-beta.1/
+
+/ESurfingDialer-Docker/00_最终部署包/Docker_v1.4.0-beta.2/
+
+# Beta packages stay local until the coordinated release is authorized.
+/ESurfingDialer-Docker/00_最终部署包/*beta*/
+/ESurfingDialer-Windows-Client/00_最终安装包/*beta*/

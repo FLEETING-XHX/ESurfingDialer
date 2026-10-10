@@ -67,14 +67,15 @@ if [ -f ".env" ]; then
   else
     printf '\nDIALER_IMAGE=%s\n' "$IMAGE_NAME" >> .env
   fi
+  # 已有文件末行可能没有换行；每次追加先分隔，避免粘到密码或镜像标签后。
   if ! grep -q '^AUTO_REAUTH_ENABLED=' .env; then
-    printf 'AUTO_REAUTH_ENABLED=1\n' >> .env
+    printf '\nAUTO_REAUTH_ENABLED=1\n' >> .env
   fi
   if ! grep -q '^AUTO_REAUTH_SAFE_WINDOW_START_HOUR=' .env; then
-    printf 'AUTO_REAUTH_SAFE_WINDOW_START_HOUR=4\n' >> .env
+    printf '\nAUTO_REAUTH_SAFE_WINDOW_START_HOUR=4\n' >> .env
   fi
   if ! grep -q '^AUTO_REAUTH_SAFE_WINDOW_END_HOUR=' .env; then
-    printf 'AUTO_REAUTH_SAFE_WINDOW_END_HOUR=6\n' >> .env
+    printf '\nAUTO_REAUTH_SAFE_WINDOW_END_HOUR=6\n' >> .env
   fi
 else
   printf 'Campus network account: '

@@ -9,16 +9,23 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>2.3.0-beta</Version>
-    <InformationalVersion>2.3beta</InformationalVersion>
-    <AssemblyVersion>2.3.0.0</AssemblyVersion>
-    <FileVersion>2.3.0.0</FileVersion>
+    <!-- WPF owns the message loop; WinForms is used only for the tray icon. -->
+    <!-- Keep the WPF DPI manifest and suppress only the WinForms-host warning. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <Version>2.3.0-beta.3</Version>
+    <InformationalVersion>2.3beta.3</InformationalVersion>
+    <AssemblyVersion>2.3.0.3</AssemblyVersion>
+    <FileVersion>2.3.0.3</FileVersion>
     <Product>ESurfingDialer Lite</Product>
     <ApplicationIcon>..\..\resources\icons\ESurfingDialer-default.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Complete Regular/Bold support arbitrary account names; Medium/SemiBold cover fixed UI text. -->
+    <Resource Include="Fonts\*.ttf" />
+    <Content Include="Fonts\NotoSansSC-OFL.txt" Link="resources\fonts\NotoSansSC-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\resources\icons\*.ico" Link="resources\icons\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\resources\icons\LUCIDE-LICENSE.txt" Link="resources\icons\LUCIDE-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\core\ESurfingDialerCore\build\libs\*-all.jar"
              Condition="Exists('..\..\core\ESurfingDialerCore\build\libs')"
              Link="core\client.jar" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

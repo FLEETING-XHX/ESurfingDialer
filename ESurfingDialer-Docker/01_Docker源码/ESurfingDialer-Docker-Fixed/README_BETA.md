@@ -144,16 +144,3 @@ sh scripts/measure-runtime.sh 10 > beta3-runtime.csv
 ```
 
 两个脚本默认目标均为 ESurfingDialer-Beta3，watchdog 不会自行启动停止的容器。暂停监督使用 `/tmp/esurfing-watchdog-ESurfingDialer-Beta3.state.paused`。日志默认单文件 10 MiB、总量 50 MiB；设置、可信样本和安全窗口沿用 beta2，计划/协议时间使用 UTC+8，TZ 控制日志显示。设置 `AUTO_REAUTH_ENABLED=0` 可关闭计划认证，心跳/门户恢复保留。真实资源和周期预测效果仍待测量。
-
-
-## 2026-10-08 本地源码整合与继续测试
-
-用户反馈当前门户修复beta3运行约半天暂未发现问题，继续试用数天。该反馈尚无新增连续日志或CPU/RSS采样，不代替完整长期验收。
-
-本地main按Docker范围整合beta1/beta2、09-28/29、beta3门户与日志修复，代码来源codex/docker-beta3的db6157f。原分支包含Windows历史，因此仅提取Docker目录；Windows源码、外部C参考、跨端文档整理及其未提交改动不在此次合并范围。原分支保留用于追溯。
-
-本轮JDK17 / Gradle8.4离线check通过：304项认证、113项运行策略、41项监督和18项日志检查。未运行shadowJar或打包器，未生成JAR/镜像/部署包，未推送、上传或发布GitHub。现有beta3包仍不包含后续心跳日志精简。
-
-当前本地包buildId为beta3-portal-fix-20261008；ZIP SHA256为928e64f223445460158f3d7bf7600043d1febecdf4fca7738526e92850ac54e8；镜像ID为sha256:cfd8bc13562c2de53216b774859bad4d3bbb8b3a85d5d4e875b5fc1671c98524。这些是既有交付身份，本次源码整合没有修改包。
-
-剩余任务继续保留：DOPT-01完整网络/竞态矩阵；DOPT-03正式版交替、停止/恢复/重启及配置身份保留；DOPT-08偶发退出后仍联网的注销/服务端证据；DOPT-04连续心跳、掉线/门户变化、计划重认证与长期CPU/RSS/I/O/日志趋势；DOPT-05 arm64 beta验证；DOPT-06凭据/诊断/回滚；DOPT-07管理后台评估。待用户继续测试后，再按新授权决定GitHub交付。

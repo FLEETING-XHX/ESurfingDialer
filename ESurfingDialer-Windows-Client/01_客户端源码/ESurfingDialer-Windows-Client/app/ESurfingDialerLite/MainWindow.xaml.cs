@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _speedTimer = new();
     private readonly DispatcherTimer _noticeTimer = new();
     private readonly NetworkSpeedSampler _speedSampler = new();
+    private readonly Action<ProcessStartInfo>? _browserLauncher;
     private readonly ObservableCollection<SummaryEntry> _summaries = [];
     private ClientConfig _config = new();
     private string _currentStatus = "";
@@ -28,6 +29,7 @@ public partial class MainWindow : Window
     private string? _editingId;
     private bool _exitRequested;
     private bool _busy;
+    private bool _accountOperation;
     private bool _disposed;
     private bool _refreshingHealth;
     private string _secretFingerprint = "";
@@ -45,9 +47,14 @@ public partial class MainWindow : Window
 
     public MainWindow() : this(false) { }
 
-    public MainWindow(bool previewMode)
+    public MainWindow(bool previewMode) : this(previewMode, null) { }
+
+    public MainWindow(bool previewMode, Action<ProcessStartInfo>? browserLauncher)
     {
+        _browserLauncher = browserLauncher;
         InitializeComponent();
+        WindowSizing.Attach(this);
+        DesignRoot.SizeChanged += (_, _) => UpdateAccountSheetLayout();
         Directory.CreateDirectory(AppPaths.LogsDirectory);
         _config = _configStore.Load();
         ApplySettings();
@@ -57,11 +64,7 @@ public partial class MainWindow : Window
         AddSummary("客户端已启动", "点击主页的校园网卡片连接。", "Offline");
         AppendLog("客户端已启动。");
         if (_configStore.LoadError != null) AppendLog("配置读取失败：" + _configStore.LoadError);
-        _dialer.RecoveryMessage += message => Dispatcher.BeginInvoke(() =>
-        {
-            if (_disposed) return;
-            AddSummary("自动恢复", message, "Coral");
-        });
+        _dialer.RecoveryMessage += QueueRecoveryMessage;
         _healthTimer.Tick += async (_, _) => await RefreshHealthSafelyAsync();
         _healthTimer.Start();
         if (!previewMode)
@@ -89,12 +92,24 @@ public partial class MainWindow : Window
 
     private Brush Color(string key) => (Brush)FindResource(key);
 
+    private void UpdateAccountSheetLayout()
+    {
+        if (AccountSheet is null || AccountEditorScroll is null) return;
+        PageClip.Rect = new Rect(0, 0, 410, DesignRoot.ActualHeight > 0 ? DesignRoot.ActualHeight : DesignRoot.Height);
+        AccountSheet.Height = Math.Max(200, DesignRoot.Height - AccountSheet.Margin.Top);
+        // The approved sheet keeps its design position; only its editable content scrolls.
+        AccountEditorScroll.Height = Math.Max(200,
+            Math.Min(AccountSheet.Height, DesignRoot.Height - AccountSheet.Margin.Top) - 138);
+    }
+
     private void ApplySettings()
     {
         AutoStartCheckBox.IsChecked = _config.AutoStart;
         StartMinimizedCheckBox.IsChecked = _config.StartMinimized;
         AutoConnectCheckBox.IsChecked = _config.AutoConnect;
         EnhancedConnectionCheckBox.IsChecked = _config.EnhancedConnection;
+        BackgroundTipsCheckBox.IsChecked = _config.BackgroundTips;
+        (System.Windows.Application.Current as App)?.SetBackgroundTipsEnabled(_config.BackgroundTips);
         MinimizeSettingRow.Visibility = _config.AutoStart ? Visibility.Visible : Visibility.Collapsed;
         _dialer.EnhancedConnection = _config.EnhancedConnection;
         _healthTimer.Interval = EnhancedConnectionPolicy.HealthCheckInterval(_config.EnhancedConnection);
@@ -108,6 +123,7 @@ public partial class MainWindow : Window
         _config.StartMinimized = StartMinimizedCheckBox.IsChecked == true;
         _config.AutoConnect = AutoConnectCheckBox.IsChecked == true;
         _config.EnhancedConnection = EnhancedConnectionCheckBox.IsChecked == true;
+        _config.BackgroundTips = BackgroundTipsCheckBox.IsChecked == true;
         try
         {
             if (previousAutoStart != _config.AutoStart) StartupManager.SetEnabled(_config.AutoStart);
@@ -136,8 +152,8 @@ public partial class MainWindow : Window
 
     private async void CampusConnectionButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy) return;
-        if (_dialer.IsRequested)
+        if (_busy || _accountOperation || _disposed) return;
+        if (_dialer.IsRequested || _dialer.IsRunning)
         {
             await StopConnectionAsync();
             return;
@@ -159,9 +175,11 @@ public partial class MainWindow : Window
         CampusConnectionButton.IsEnabled = false;
         try
         {
-            var password = PasswordProtector.Unprotect(_config.ProtectedPassword);
-            if (string.IsNullOrWhiteSpace(_config.UserName) || string.IsNullOrEmpty(password))
-                throw new InvalidOperationException("请添加账户并填写正确的账号和密码。");
+            var decrypted = PasswordProtector.Decrypt(_config.ProtectedPassword);
+            if (string.IsNullOrWhiteSpace(_config.UserName))
+                throw new InvalidOperationException("请添加账户并填写校园网账号。");
+            if (!decrypted.Success) throw new InvalidOperationException(decrypted.ErrorMessage);
+            var password = decrypted.Password;
             UpdateStatus("连接中");
             AppendLog("准备启动认证核心。");
             await _dialer.StartAsync(_config, password, AppendLog);
@@ -179,7 +197,7 @@ public partial class MainWindow : Window
 
     private async Task<bool> StopConnectionAsync(bool userInitiated = true)
     {
-        if (_busy) return false;
+        if (_busy || _disposed) return false;
         if (userInitiated) ResetEnhancedRecoveryState();
         _busy = true;
         CampusConnectionButton.IsEnabled = false;
@@ -187,21 +205,21 @@ public partial class MainWindow : Window
         try
         {
             await Task.Run(_dialer.Stop);
-            UpdateStatus("已断开");
+            UpdateStatus(userInitiated ? "用户已停止" : "正在恢复");
             AppendLog(userInitiated ? "用户停止认证核心。" : "增强连接正在重启认证核心。");
             return true;
         }
         catch (Exception ex) { Notify("停止失败：" + ex.Message); return false; }
-        finally { _busy = false; CampusConnectionButton.IsEnabled = true; AccountSheet.IsEnabled = true; }
+        finally { _busy = false; CampusConnectionButton.IsEnabled = !_accountOperation; AccountSheet.IsEnabled = !_accountOperation; }
     }
 
     private async Task RefreshHealthAsync()
     {
-        if (_disposed || _busy) return;
+        if (_disposed || _busy || _accountOperation) return;
         var health = HealthSnapshot.Load();
         var now = DateTimeOffset.UtcNow;
         var usable = _dialer.IsRunning
-            && health?.IsConnectedFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true;
+            && health?.IsConnectedFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true;
         HealthTextBlock.Text = _dialer.IsRunning
             ? health == null ? "核心运行中，等待健康状态。" : "核心状态：" + health.ToDisplayText()
             : "认证核心未运行。";
@@ -210,17 +228,25 @@ public partial class MainWindow : Window
             RecordHealthyConnection(now);
             UpdateStatus("已连接");
         }
+        else if (_automaticRecoveryExhausted || (_dialer.RecoveryExhausted && _currentStatus != "连接失败"))
+            UpdateStatus("恢复已暂停");
+        else if (_dialer.IsRecovering)
+            UpdateStatus("正在恢复");
         else if (_dialer.IsRequested)
-            UpdateStatus(health?.HasAuthenticationFailureFor(_dialer.StartedAt, now,
-                EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection)) == true ? "连接失败" : "连接中");
-        else if (_currentStatus is "已连接" or "连接中" or "连接失败")
+        {
+            var failed = health?.HasAuthenticationFailureFor(_dialer.StartedAt, now,
+                EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true;
+            UpdateStatus(failed ? health!.AuthenticationBlocked ? "认证已暂停" : "连接失败"
+                : _recoveryStartedAt != null ? "正在恢复" : "连接中");
+        }
+        else if (_currentStatus is "已连接" or "连接中" or "正在恢复" or "认证已暂停")
             UpdateStatus("已断开");
 
         if (_config.EnhancedConnection && _dialer.IsRequested && _dialer.IsRunning
             && now - _dialer.StartedAt >= EnhancedConnectionPolicy.EnhancedStartupGrace
             && !IsResumeRecoveryGraceActive())
         {
-            var reason = EnhancedConnectionPolicy.RecoverableFailureReason(health, _dialer.StartedAt, now);
+            var reason = EnhancedConnectionPolicy.RecoverableFailureReason(health, _dialer.StartedAt, now, _dialer.InstanceId);
             if (reason == null) _consecutiveUnhealthyChecks = 0;
             else
             {
@@ -280,6 +306,7 @@ public partial class MainWindow : Window
         if (_automaticRecoveryAttempts >= EnhancedConnectionPolicy.MaximumAutomaticRecoveries)
         {
             _automaticRecoveryExhausted = true;
+            UpdateStatus("恢复已暂停");
             AppendLog($"增强连接已暂停自动恢复：连续恢复已达上限 {EnhancedConnectionPolicy.MaximumAutomaticRecoveries} 次，最后原因={reason}。");
             AddSummary("自动恢复已暂停", "请查看详细日志后手动连接。", "Coral");
             return;
@@ -292,13 +319,16 @@ public partial class MainWindow : Window
         _recoveryStartedAt = now;
         AppendLog($"增强连接开始恢复：检测时间={now:O}，原因={reason}，恢复次数={_automaticRecoveryCount}，下次恢复最早允许时间={_nextRecoveryAllowedAt:O}。");
         AddSummary("增强恢复", "检测到认证异常，正在重新启动认证核心。", "Coral");
-        if (!await StopConnectionAsync(userInitiated: false))
+        try
         {
-            AppendLog("增强连接恢复未能停止旧核心，将在冷却后重试。");
-            return;
+            UpdateStatus("正在恢复");
+            var decrypted = PasswordProtector.Decrypt(_config.ProtectedPassword);
+            if (!decrypted.Success) throw new InvalidOperationException(decrypted.ErrorMessage);
+            var password = decrypted.Password;
+            if (!await _dialer.RestartForRecoveryAsync(_config, password, AppendLog) && _dialer.IsRequested)
+                AppendLog("增强连接恢复未完成，请查看恢复状态。");
         }
-        if (!await StartDialerAsync(automaticRecovery: true))
-            AppendLog("增强连接恢复未能启动认证核心，将按退避策略重试。");
+        catch (Exception ex) { AppendLog("增强连接恢复失败：" + ex.Message); }
     }
 
     private void ResetEnhancedRecoveryState()
@@ -316,22 +346,23 @@ public partial class MainWindow : Window
 
     private void UpdateStatus(string status)
     {
+        var presentation = ConnectionPresentation.For(status);
+        CampusConnectionButton.ToolTip = _dialer.IsRequested || _dialer.IsRunning ? "点击断开校园网" : "点击连接校园网";
+        CampusStatusText.ToolTip = HomeStatusText.ToolTip = presentation.Detail;
         if (_currentStatus == status) return;
         var previous = _currentStatus;
         _currentStatus = status;
         CampusStatusText.Text = HomeStatusText.Text = status;
-        SpeedStatusText.Text = status == "已连接" ? "已连接" : status == "连接中" ? "正在连接" : "等待连接";
-        var tone = status switch { "已连接" => "Green", "连接中" => "Coral", "连接失败" => "Coral", _ => "Offline" };
-        var brush = Color(tone);
-        BrandSignalBar1.Background = BrandSignalBar2.Background = BrandSignalBar3.Background = brush;
+        SpeedStatusText.Text = status == "已连接" ? "已连接" : status is "连接中" or "正在恢复" ? status : "等待连接";
+        var brush = Color(presentation.Tone);
         CampusStatusDot.Fill = brush;
         SignalBar1.Background = SignalBar2.Background = SignalBar3.Background = brush;
-        CampusConnectionButton.ToolTip = _dialer.IsRequested ? "点击断开校园网" : "点击连接校园网";
-        var tray = status switch { "已连接" => TrayStatus.Connected, "连接中" => TrayStatus.Connecting, "连接失败" => TrayStatus.Error, _ => TrayStatus.Disconnected };
-        (System.Windows.Application.Current as App)?.SetTrayStatus(tray, "天翼校园：" + status);
+        (System.Windows.Application.Current as App)?.SetTrayStatus(presentation.Tray, "天翼校园：" + status + "。" + presentation.Detail);
         if (status == "已连接") AddSummary("认证成功", "校园网认证和心跳已确认。", "Green");
         else if (status == "连接失败") AddSummary("连接失败", "请在设置中查看详细日志。", "Coral");
         else if (status == "连接中") AddSummary(previous == "已连接" ? "正在重新认证" : "正在连接", "正在检测校园网并验证当前账户。", "Coral");
+        else if (status is "正在恢复" or "认证已暂停" or "恢复已暂停" or "用户已停止")
+            AddSummary(status, presentation.Detail, presentation.Tone);
         else if (previous.Length > 0) AddSummary("连接断开", "认证连接已停止。", "Offline");
         RefreshAccounts();
     }
@@ -399,7 +430,7 @@ public partial class MainWindow : Window
         MainContent.IsEnabled = false;
         AddAccountButton.Focus();
         if (SystemParameters.ClientAreaAnimation && Mouse.LeftButton == MouseButtonState.Released)
-            SheetTranslation.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(530, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            SheetTranslation.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(AccountSheet.Height, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
     }
 
     private void RefreshAccounts()
@@ -425,6 +456,7 @@ public partial class MainWindow : Window
     private void ShowAccountList()
     {
         AccountEditor.Visibility = Visibility.Collapsed;
+        AccountHint.Visibility = Visibility.Visible;
         AccountListScroll.Visibility = AccountActions.Visibility = Visibility.Visible;
         CancelAccountEditButton.Visibility = Visibility.Collapsed;
         SheetTitle.Text = "账户管理";
@@ -445,84 +477,44 @@ public partial class MainWindow : Window
         SheetTitle.Text = account == null ? "添加账户" : "编辑账户";
         AccountNameTextBox.Text = account?.Name ?? "";
         UserTextBox.Text = account?.UserName ?? "";
-        PasswordBox.Password = account == null ? "" : PasswordProtector.Unprotect(account.ProtectedPassword);
-        AccountErrorText.Text = "";
+        var decrypted = PasswordProtector.Decrypt(account?.ProtectedPassword);
+        PasswordBox.Password = decrypted.Password;
+        AccountErrorText.Text = account != null && !decrypted.Success ? decrypted.ErrorMessage : "";
         AccountListScroll.Visibility = AccountActions.Visibility = Visibility.Collapsed;
         AccountEditor.Visibility = CancelAccountEditButton.Visibility = Visibility.Visible;
+        AccountHint.Visibility = Visibility.Collapsed;
         UserTextBox.Focus();
     }
     private void CancelAccountEdit_Click(object sender, RoutedEventArgs e) => ShowAccountList();
 
-    private async void SaveAccount_Click(object sender, RoutedEventArgs e)
-    {
-        if (_busy) return;
-        var username = UserTextBox.Text.Trim();
-        if (username.Length == 0 || PasswordBox.Password.Length == 0)
-        {
-            AccountErrorText.Text = "请填写校园网账号和密码。";
-            return;
-        }
-        if (_config.Accounts.Any(a => a.Id != _editingId && a.UserName == username))
-        {
-            AccountErrorText.Text = "这个账号已经添加，请直接编辑已有账户。";
-            return;
-        }
-        var account = _config.Accounts.FirstOrDefault(a => a.Id == _editingId) ?? new CampusAccount();
-        var wasCurrent = _config.SelectedAccountId == account.Id;
-        var reconnect = wasCurrent && _dialer.IsRequested;
-        try
-        {
-            var encrypted = PasswordProtector.Protect(PasswordBox.Password);
-            if (reconnect && !await StopConnectionAsync()) return;
-            account.UserName = username;
-            account.Name = AccountNameTextBox.Text.Trim();
-            account.ProtectedPassword = encrypted;
-            if (!_config.Accounts.Contains(account)) _config.Accounts.Add(account);
-            _config.SelectedAccountId ??= account.Id;
-            _configStore.Save(_config);
-            ShowAccountList();
-            Notify("账户已保存");
-            if (reconnect) await StartDialerAsync();
-        }
-        catch (Exception ex)
-        {
-            _config = _configStore.Load();
-            RefreshAccounts();
-            AccountErrorText.Text = "保存失败：" + ex.Message;
-        }
-    }
+    private async void SaveAccount_Click(object sender, RoutedEventArgs e) => await SaveAccountAsync();
 
     private async void SelectAccount_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy || (sender as Button)?.Tag is not string id) return;
-        if (_config.SelectedAccountId == id) { CloseAccounts(); return; }
-        var reconnect = _dialer.IsRequested;
-        if (reconnect && !await StopConnectionAsync()) return;
-        _config.SelectedAccountId = id;
+        if ((sender as Button)?.Tag is string id) await SelectAccountAsync(id);
+    }
+
+    private void QueueRecoveryMessage(string message)
+    {
+        if (_disposed || Dispatcher.HasShutdownStarted) return;
         try
         {
-            _configStore.Save(_config);
-            RefreshAccounts();
-            CloseAccounts();
-            AddSummary("账户已切换", "当前校园网账户已更新。", "Offline");
-            if (reconnect) await StartDialerAsync();
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_disposed || Dispatcher.HasShutdownStarted) return;
+                AddSummary("自动恢复", message, "Coral");
+            });
         }
-        catch (Exception ex) { _config = _configStore.Load(); RefreshAccounts(); Notify("切换失败：" + ex.Message); }
+        catch (InvalidOperationException) { }
     }
 
     private async void DeleteAccount_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy) return;
-        if ((sender as Button)?.Tag is not string id) return;
+        if (_busy || _accountOperation || _disposed || (sender as Button)?.Tag is not string id) return;
         var account = _config.Accounts.FirstOrDefault(a => a.Id == id);
         if (account == null) return;
-        if (System.Windows.MessageBox.Show(this, $"删除账户“{account.DisplayName}”？删除当前账户会停止连接。", "删除账户", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        if (_config.SelectedAccountId == id && !await StopConnectionAsync()) return;
-        _config.Accounts.Remove(account);
-        if (_config.SelectedAccountId == id) _config.SelectedAccountId = _config.Accounts.FirstOrDefault()?.Id;
-        try { _configStore.Save(_config); Notify("账户已删除"); }
-        catch (Exception ex) { _config = _configStore.Load(); Notify("删除失败：" + ex.Message); }
-        RefreshAccounts();
+        if (System.Windows.MessageBox.Show(this, $"删除账户“{account.DisplayName}”？删除当前账户会停止连接。", "删除账户", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            await DeleteAccountAsync(id);
     }
 
     private void CloseAccounts()
@@ -554,7 +546,48 @@ public partial class MainWindow : Window
         HomeNavButton.Foreground = Color(page == HomePage ? "Coral" : "Muted");
         LogsNavButton.Foreground = Color(page == LogsPage ? "Coral" : "Muted");
         SettingsNavButton.Foreground = Color(page == SettingsPage ? "Coral" : "Muted");
+        HomeNavButton.SetValue(System.Windows.Automation.AutomationProperties.ItemStatusProperty, page == HomePage ? "已选中" : "未选中");
+        LogsNavButton.SetValue(System.Windows.Automation.AutomationProperties.ItemStatusProperty, page == LogsPage ? "已选中" : "未选中");
+        SettingsNavButton.SetValue(System.Windows.Automation.AutomationProperties.ItemStatusProperty, page == SettingsPage ? "已选中" : "未选中");
+        UpdateScrollVisuals();
         UpdateSpeedSampling();
+    }
+
+    private void PageScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e) => UpdateScrollVisuals();
+
+    private void UpdateScrollVisuals()
+    {
+        if (TopContentFade == null || SettingsScrollThumb == null || SettingsPage == null || LogsPage == null) return;
+        var scroll = SettingsPage.Visibility == Visibility.Visible ? SettingsScrollViewer
+            : LogsPage.Visibility == Visibility.Visible ? LogsScrollViewer : null;
+        TopContentFade.Visibility = scroll is { VerticalOffset: > 0.5 } ? Visibility.Visible : Visibility.Collapsed;
+        SettingsScrollThumb.Visibility = SettingsPage.Visibility == Visibility.Visible && SettingsScrollViewer.ScrollableHeight > 0.5
+            ? Visibility.Visible : Visibility.Collapsed;
+        var progress = SettingsScrollViewer.ScrollableHeight > 0 ? SettingsScrollViewer.VerticalOffset / SettingsScrollViewer.ScrollableHeight : 0;
+        Canvas.SetTop(SettingsScrollThumb, (111 + 570 * Math.Clamp(progress, 0, 1)) * 410 / 449);
+    }
+
+    private void SettingsScrollViewer_PreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (e.NewFocus is not FrameworkElement target || !target.IsDescendantOf(SettingsScrollViewer)) return;
+        var bounds = target.TransformToAncestor(DesignRoot).TransformBounds(new Rect(target.RenderSize));
+        var top = 164d * 410 / 449;
+        var bottom = 710d * 410 / 449;
+        if (bounds.Bottom > bottom)
+            SettingsScrollViewer.ScrollToVerticalOffset(SettingsScrollViewer.VerticalOffset + bounds.Bottom - bottom + 8);
+        else if (bounds.Top < top)
+            SettingsScrollViewer.ScrollToVerticalOffset(SettingsScrollViewer.VerticalOffset - (top - bounds.Top) - 8);
+    }
+
+    private void MinimizeWindowButton_Click(object sender, RoutedEventArgs e) => System.Windows.SystemCommands.MinimizeWindow(this);
+    private void CloseWindowButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || e.GetPosition(DesignRoot).Y > 80.845
+            || AccountOverlay.Visibility == Visibility.Visible || DetailsOverlay.Visibility == Visibility.Visible) return;
+        if (e.ClickCount == 1 && e.LeftButton == MouseButtonState.Pressed) DragMove();
+        e.Handled = true;
     }
 
     private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
@@ -600,10 +633,12 @@ public partial class MainWindow : Window
         catch (Exception ex) { Notify("导出失败：" + ex.Message); }
         finally { if (button != null) button.IsEnabled = true; }
     }
-    private void GitHubButton_Click(object sender, RoutedEventArgs e)
+    private void RechargeButton_Click(object sender, RoutedEventArgs e) => OpenServiceLink(ServiceLinks.RechargeUrl);
+    private void ChangePasswordButton_Click(object sender, RoutedEventArgs e) => OpenServiceLink(ServiceLinks.ChangePasswordUrl);
+    private void GitHubButton_Click(object sender, RoutedEventArgs e) => OpenServiceLink(ServiceLinks.GitHubUrl);
+    private void OpenServiceLink(string url)
     {
-        try { Process.Start(new ProcessStartInfo("https://github.com/FLEETING-XHX/ESurfingDialer") { UseShellExecute = true }); }
-        catch (Exception ex) { Notify("无法打开浏览器：" + ex.Message); }
+        if (!ServiceLinks.TryOpen(url, _browserLauncher)) Notify("无法打开默认浏览器，请检查浏览器设置后重试。");
     }
     private void Notify(string message)
     {

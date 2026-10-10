@@ -6,14 +6,29 @@ namespace ESurfingDialerLite;
 public sealed class DialerCoreProcess
 {
     private readonly object _gate = new();
+    private readonly Action<Process> _startProcess;
+    private readonly Action<Process> _terminateProcess;
+    private readonly Func<int, TimeSpan>? _recoveryDelay;
     private Process? _process;
     private int _generation;
     private bool _requested;
     private bool _enhanced = true;
+    private bool _recovering;
+    private bool _recoveryExhausted;
     private int _crashStreak;
     private DateTimeOffset _startedAt;
+    private string? _instanceId;
     private CancellationTokenSource? _recoveryCancellation;
     public event Action<string>? RecoveryMessage;
+
+    public DialerCoreProcess() : this(process => process.Start(), null) { }
+    internal DialerCoreProcess(Action<Process> startProcess, Func<int, TimeSpan>? recoveryDelay, Action<Process>? terminateProcess = null)
+    {
+        _startProcess = startProcess;
+        _recoveryDelay = recoveryDelay;
+        _terminateProcess = terminateProcess ?? (process => process.Kill(entireProcessTree: true));
+    }
+
     public bool EnhancedConnection
     {
         get { lock (_gate) return _enhanced; }
@@ -24,12 +39,13 @@ public sealed class DialerCoreProcess
             {
                 if (_enhanced == value) return;
                 _enhanced = value;
+                if (!value) _recoveryExhausted = false;
                 process = _process is { HasExited: false } ? _process : null;
-                if (!value && process == null)
+                if (!value && (_recovering || process == null))
                 {
-                    _requested = false;
-                    ++_generation;
                     CancelPendingRecovery();
+                    _recovering = false;
+                    if (process == null) { _requested = false; ++_generation; }
                 }
             }
             if (process != null) TrySendControl(process, value ? "enhanced on" : "enhanced off");
@@ -37,7 +53,10 @@ public sealed class DialerCoreProcess
     }
     public bool IsRequested { get { lock (_gate) return _requested; } }
     public bool IsRunning { get { lock (_gate) return _process is { HasExited: false }; } }
+    public bool IsRecovering { get { lock (_gate) return _recovering; } }
+    public bool RecoveryExhausted { get { lock (_gate) return _recoveryExhausted; } }
     public DateTimeOffset StartedAt { get { lock (_gate) return _startedAt; } }
+    public string? InstanceId { get { lock (_gate) return _instanceId; } }
 
     public Task StartAsync(ClientConfig config, string password, Action<string> log)
     {
@@ -45,12 +64,10 @@ public sealed class DialerCoreProcess
         {
             if (_requested) return Task.CompletedTask;
             if (_process is { HasExited: false }) throw new InvalidOperationException("旧认证核心尚未退出，请稍后再试。");
-            if (string.IsNullOrWhiteSpace(config.UserName) || string.IsNullOrEmpty(password))
-                throw new InvalidOperationException("请先填写账号和密码。");
-            if (!File.Exists(AppPaths.CoreJar))
-                throw new FileNotFoundException("未找到认证核心 core/client.jar，请使用完整客户端包。");
+            ValidateCredentials(config.UserName, password);
             _requested = true;
             _crashStreak = 0;
+            _recoveryExhausted = false;
             var generation = ++_generation;
             CancelPendingRecovery();
             _recoveryCancellation = new CancellationTokenSource();
@@ -60,11 +77,36 @@ public sealed class DialerCoreProcess
         return Task.CompletedTask;
     }
 
+    public Task<bool> RestartForRecoveryAsync(ClientConfig config, string password, Action<string> log)
+    {
+        lock (_gate)
+        {
+            if (!_requested || !_enhanced || _recovering) return Task.FromResult(false);
+            ValidateCredentials(config.UserName, password);
+            // Unlike a manual stop, a health restart retains the user's connection intent.
+            var generation = ++_generation;
+            CancelPendingRecovery();
+            _recoveryCancellation = new CancellationTokenSource();
+            var token = _recoveryCancellation.Token;
+            _recovering = true;
+            var user = config.UserName;
+            return Task.Run(() => RecoverAsync(generation, user, password, log, token,
+                EnhancedConnectionPolicy.MaximumAutomaticRecoveries, 0));
+        }
+    }
+
+    private static void ValidateCredentials(string user, string password)
+    {
+        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrEmpty(password))
+            throw new InvalidOperationException("请先填写账号和密码。");
+        if (!File.Exists(AppPaths.CoreJar))
+            throw new FileNotFoundException("未找到认证核心 core/client.jar，请使用完整客户端包。");
+    }
+
     private void StartProcess(string user, string password, int generation, Action<string> log)
     {
         Directory.CreateDirectory(AppPaths.LogsDirectory);
         Directory.CreateDirectory(AppPaths.DataDirectory);
-        // Old health files must never authenticate a newly started process.
         if (File.Exists(AppPaths.HealthFile)) File.Delete(AppPaths.HealthFile);
         var info = new ProcessStartInfo
         {
@@ -74,6 +116,8 @@ public sealed class DialerCoreProcess
         };
         foreach (var arg in new[] { "-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-Xms16m", "-jar", AppPaths.CoreJar, "-u", user, "-p", password, "-d", "--control-stdin" })
             info.ArgumentList.Add(arg);
+        _instanceId = Guid.NewGuid().ToString();
+        info.Environment["CORE_INSTANCE_ID"] = _instanceId;
         info.Environment["STATE_DIR"] = AppPaths.DataDirectory;
         info.Environment["AUTO_REAUTH_ENABLED"] = "0";
         info.Environment["ENHANCED_CONNECTION_ENABLED"] = _enhanced ? "1" : "0";
@@ -89,18 +133,31 @@ public sealed class DialerCoreProcess
         _startedAt = DateTimeOffset.UtcNow;
         try
         {
-            process.Start();
+            _startProcess(process);
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            log("认证核心已启动。");
+            SafeLog(log, "认证核心已启动。");
         }
-        catch
+        catch (Exception startError)
         {
-            _process = null;
-            // Output setup can fail after Start succeeds; do not leave an orphan core.
-            try { if (!process.HasExited) { process.Kill(entireProcessTree: true); process.WaitForExit(2000); } }
+            var associated = false;
+            try { _ = process.Id; associated = true; }
             catch (InvalidOperationException) { }
-            finally { process.Dispose(); }
+            try
+            {
+                if (associated && !process.HasExited)
+                {
+                    _terminateProcess(process);
+                    if (!process.WaitForExit(2000)) throw new TimeoutException("启动失败的认证核心尚未退出。");
+                }
+            }
+            catch (Exception cleanupError)
+            {
+                // Keep ownership until termination is confirmed; a new start must reject this live process.
+                throw new AggregateException("启动失败且核心尚未清理，请停止旧核心后再试。", startError, cleanupError);
+            }
+            _process = null;
+            process.Dispose();
             throw;
         }
     }
@@ -111,32 +168,33 @@ public sealed class DialerCoreProcess
         {
             _requested = false;
             ++_generation;
+            _recovering = false;
+            _recoveryExhausted = false;
             CancelPendingRecovery();
-            var process = _process;
-            if (process == null) return;
-            try
-            {
-                if (!process.HasExited)
-                {
-                    TrySendControl(process, "stop");
-                    if (!process.WaitForExit(4000)) process.Kill(entireProcessTree: true);
-                    if (!process.WaitForExit(2000))
-                        throw new InvalidOperationException("认证核心仍在退出，请稍后再试。");
-                }
-                _process = null;
-                process.Dispose();
-            }
-            catch (InvalidOperationException) when (process.HasExited) { _process = null; process.Dispose(); }
+            StopProcess();
         }
+    }
+
+    // All callers hold _gate. This deliberately does not alter the user's connection intent.
+    private void StopProcess()
+    {
+        var process = _process;
+        if (process == null) return;
+        if (!process.HasExited)
+        {
+            TrySendControl(process, "stop");
+            if (!process.WaitForExit(4000)) _terminateProcess(process);
+            if (!process.WaitForExit(2000))
+                throw new InvalidOperationException("认证核心仍在退出，请稍后再试。");
+        }
+        _process = null;
+        process.Dispose();
     }
 
     public bool RequestNetworkRecheck()
     {
         lock (_gate)
-        {
-            return _requested && _process is { HasExited: false } process
-                && TrySendControl(process, "network recheck");
-        }
+            return _requested && _process is { HasExited: false } process && TrySendControl(process, "network recheck");
     }
 
     private static bool TrySendControl(Process process, string command)
@@ -154,7 +212,6 @@ public sealed class DialerCoreProcess
         return false;
     }
 
-    // Called under _gate; cancel the timer itself rather than retaining a stale recovery until it expires.
     private void CancelPendingRecovery()
     {
         var cancellation = _recoveryCancellation;
@@ -166,7 +223,7 @@ public sealed class DialerCoreProcess
     private async Task HandleExitAsync(Process exited, int generation, string user, string password, Action<string> log)
     {
         await Task.Yield();
-        CancellationToken recoveryToken;
+        Task<bool> recovery;
         lock (_gate)
         {
             if (_generation != generation || _process != exited) return;
@@ -174,37 +231,73 @@ public sealed class DialerCoreProcess
             _crashStreak++;
             _process = null;
             exited.Dispose();
-            log("认证核心已退出。");
-            if (!_requested || !_enhanced) { _requested = false; CancelPendingRecovery(); return; }
-            if (_crashStreak > 5) {
-                _requested = false;
-                CancelPendingRecovery();
-                RecoveryMessage?.Invoke("认证核心连续退出，请查看详细日志后手动连接。");
+            SafeLog(log, "认证核心已退出。");
+            if (!_requested || !_enhanced || _crashStreak > 5)
+            {
+                _requested = false; _recovering = false; CancelPendingRecovery();
+                _recoveryExhausted = _enhanced && _crashStreak > 5;
+                if (_recoveryExhausted) PublishRecovery("认证核心连续退出，请查看详细日志后手动连接。");
                 return;
             }
-            recoveryToken = _recoveryCancellation?.Token ?? CancellationToken.None;
-            log($"增强连接检测到认证核心退出：检测时间={DateTimeOffset.UtcNow:O}，连续退出次数={_crashStreak}。");
+            _recoveryCancellation ??= new CancellationTokenSource();
+            _recovering = true;
+            recovery = RecoverAsync(generation, user, password, log, _recoveryCancellation.Token, 5, _crashStreak);
         }
-        for (var attempt = 1; attempt <= 5; attempt++)
+        await recovery.ConfigureAwait(false);
+    }
+
+    private async Task<bool> RecoverAsync(int generation, string user, string password, Action<string> log,
+        CancellationToken token, int maximumAttempts, int crashStreak)
+    {
+        for (var attempt = 1; attempt <= maximumAttempts; attempt++)
         {
-            var delay = Math.Min(60, 5 * (1 << Math.Min(4, attempt + _crashStreak - 2)));
-            RecoveryMessage?.Invoke($"{delay} 秒后尝试重新启动认证核心。");
-            log($"增强连接恢复计划：恢复次数={attempt}，冷却={delay}s。");
-            try { await Task.Delay(TimeSpan.FromSeconds(delay), recoveryToken); }
-            catch (OperationCanceledException) { return; }
+            var delay = _recoveryDelay?.Invoke(attempt) ?? (crashStreak > 0
+                ? TimeSpan.FromSeconds(Math.Min(60, 5 * (1 << Math.Min(4, attempt + crashStreak - 2))))
+                : attempt == 1 ? TimeSpan.Zero : EnhancedConnectionPolicy.RecoveryCooldown(attempt - 1));
+            if (delay > TimeSpan.Zero)
+            {
+                PublishRecovery($"{delay.TotalSeconds:0} 秒后尝试重新启动认证核心。");
+                SafeLog(log, $"增强连接恢复计划：恢复次数={attempt}，冷却={delay.TotalSeconds:0}s。");
+            }
+            try { await Task.Delay(delay, token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return false; }
             lock (_gate)
             {
-                // A stopped/switched account invalidates every pending restart.
-                if (_generation != generation) return;
-                if (!_requested || !_enhanced) { _requested = false; CancelPendingRecovery(); return; }
-                try { StartProcess(user, password, generation, log); return; }
-                catch (Exception ex) { log("自动重启失败：" + ex.Message); }
+                if (_generation != generation || token.IsCancellationRequested || !_requested || !_enhanced) return false;
+                try
+                {
+                    StopProcess();
+                    StartProcess(user, password, generation, log);
+                    _recovering = false;
+                    return true;
+                }
+                catch (Exception ex) { SafeLog(log, "自动重启失败：" + ex.Message); }
             }
         }
         lock (_gate)
         {
-            if (_generation == generation) { _requested = false; CancelPendingRecovery(); }
+            if (_generation != generation || token.IsCancellationRequested) return false;
+            _requested = false; _recovering = false; CancelPendingRecovery();
+            _recoveryExhausted = true;
         }
-        RecoveryMessage?.Invoke("多次启动失败，请查看详细日志后手动连接。");
+        PublishRecovery("多次启动失败，请查看详细日志后手动连接。");
+        return false;
+    }
+
+    private static void SafeLog(Action<string> log, string message)
+    {
+        try { log(message); }
+        catch (Exception ex) { ClientLog.Write(AppPaths.ClientLogFile, "核心日志回调失败：" + ex.GetType().Name); }
+    }
+
+    private void PublishRecovery(string message)
+    {
+        var handlers = RecoveryMessage;
+        if (handlers == null) return;
+        foreach (Action<string> handler in handlers.GetInvocationList())
+        {
+            try { handler(message); }
+            catch (Exception ex) { ClientLog.Write(AppPaths.ClientLogFile, "恢复通知回调失败：" + ex.GetType().Name); }
+        }
     }
 }
