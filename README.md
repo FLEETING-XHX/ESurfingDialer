@@ -16,7 +16,7 @@
 >
 > Windows 客户端 v2.2 存在可能导致校园网认证失败的 Bug，目前不建议下载或使用。如果已经安装，建议先保留或恢复原来可用的认证方式。
 >
-> **v2.3beta 已开放测试**：想试用的话，可以到 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.3beta) 下载。这个版本还需要在真实校园网环境中验证认证和稳定性，可能仍会遇到认证问题。Windows 测试包请从 Releases 页面下载。
+> 最新版本的bug已经修复好了，等我优化一下UI还有做测试之后就会发布，并且与新版的Docker一起发布
 
 
 
