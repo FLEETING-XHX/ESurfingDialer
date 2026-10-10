@@ -1,63 +1,50 @@
 # ESurfingDialer（天翼校园）
 
-**ESurfingDialer / Tianyi Campus** 是一款校园网认证工具，目前提供 Windows 客户端和 Docker 软路由两个版本，可以根据自己的使用环境选择。
+**ESurfingDialer / Tianyi Campus** 是校园网认证工具，提供 Windows 客户端和 Docker 软路由版本，可以根据使用环境选择。
 
 如果你更熟悉“天翼校园”这个名字，也可以用“天翼校园认证”“校园网认证”或“ESurfingDialer”等关键词找到本项目。
 
+### Windows 客户端
 
-### Windows 客户端：
+在 Windows 电脑上使用校园网，下载后运行安装器。**v2.4** 内置 .NET 和 Java，无需另行安装运行环境；支持 Windows x64。
 
-如果你在 Windows 电脑上使用校园网，可以选择这个版本，直接安装即可。
+[下载 Windows 客户端 v2.4](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.4/ESurfingDialer-Windows-v2.4-Setup.exe)
 
-~~[下载 Windows 客户端 v2.2](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.2/ESurfingDialer-Windows-v2.2-Setup.exe)~~
+[查看 Windows 使用说明](项目文档/WINDOWS-USER-GUIDE.md)
 
+v2.4 汇入认证通道、门户解析和连接恢复修复，更新界面、内嵌中文字体、托盘提示及窗口缩放。启动尺寸会按显示器缩放和工作区自动适配，支持手动等比调整。
 
-> ![红色警告](assets/windows-warning.svg)
->
-> Windows 客户端 v2.2 存在可能导致校园网认证失败的 Bug，目前不建议下载或使用。如果已经安装，建议先保留或恢复原来可用的认证方式。
->
-> **v2.3beta 已开放测试**：想试用的话，可以到 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.3beta) 下载。这个版本还需要在真实校园网环境中验证认证和稳定性，可能仍会遇到认证问题。Windows 测试包请从 Releases 页面下载。
+升级前完全退出旧客户端并备份账户配置。此前 UA2104 修复版已通过一次真实登录、确认心跳和外网访问；v2.4 的真实切网、休眠恢复、安装升级矩阵与长期稳定仍需继续验收。Windows v2.2 有已知认证失败问题，建议使用新版。
 
+### Docker 软路由版
 
+使用 iStoreOS / OpenWrt 软路由，可选择 **v2.4 离线部署包**，仅支持 **amd64 / x86_64**。设备需要已安装 Docker 和 Docker Compose。
 
-### Docker 软路由版：
+[下载 Docker v2.4 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.4/ESurfingDialer-Docker-v2.4.zip)
 
-如果你使用 iStoreOS / OpenWrt 软路由，可以选择 Docker 版本。
+[查看 Docker v2.4 部署说明](ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_RELEASE.md)
 
-[下载 Docker v1.3 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v1.3/ESurfingDialer-Docker-v1.3.zip)
+离线包包含镜像、安装脚本和配置模板，准备好文件后无需公网拉取镜像。解压后运行 `sh install.sh`，安装默认只创建容器；停止旧认证容器后运行 `sh start.sh`。
 
-[查看 Docker 安装教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)
-
-
-
-Docker 版本提供离线镜像包。提前准备好安装包后，软路由即使没有公网，也可以完成部署。
-
-> **稳定性记录**：Docker v1.3 已连续测试 14 天，期间未出现断网情况。
+v2.4 汇入门户兼容、会话恢复、健康监督、日志限额与审查修复。此前 beta3 已通过一次真实认证及上网；v2.4 的恢复、注销和长期稳定仍待验收。Docker v1.3 的 14 天稳定性记录属于历史版本。
 
 ## 版本说明
 
-- Windows 客户端和 Docker 版本分别维护，更新互不影响。
-- 两个版本的文件放在各自目录中，共用这个 GitHub 仓库。
-- Releases 页面会标明是 Windows 客户端还是 Docker 版本，下载时留意一下即可。
-
-## 其他文件
-
-需要源码、历史版本或相关说明，可以到 [Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 页面查看。
-
-Windows 客户端和 Docker 版本使用不同的 Release 标签，方便区分。
+- 从本次发布起，Windows 和 Docker 统一使用 **v2.4**，放在[同一个 Release](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.4) 中。
+- Release 的两个产品附件分别是 Windows `.exe` 安装器与 Docker `.zip` 离线包，按文件名选择。
+- 两个产品分别维护源码与认证核心；旧版本仍可从[历史 Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 查看。
+- 真实认证与长期验收范围见[版本说明](项目文档/V2.4-RELEASE.md)，本地回归结果不能替代现场长期验证。
 
 ## 项目文档
 
-修复进度、优化和待办现在统一记在一份文件里，按 Docker / Windows 分开看。
-
 | 文档 | 用途 |
 | --- | --- |
-| [修复与优化总记录](项目文档/修复与优化总记录.md) | 历史改动、当前源码/测试包状态及全部待办 |
-| [文档清单与用途](项目文档/README.md) | Docker、Windows和共用Markdown各自做什么 |
-| [Windows使用说明](项目文档/WINDOWS-USER-GUIDE.md) | 账户、连接、托盘、设置和故障排查 |
-| [Docker部署教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | v1.3软路由图文安装步骤 |
-
-Windows最新本地包为[beta3 UA2104修复版](项目文档/WINDOWS-BOOTSTRAP-UA-FIX-2026-10-08.md)，10-09用户真实登录、首次确认心跳及外网访问已通过；后续定时心跳、恢复和长期稳定待验。Docker最新本地[beta3门户修复包](项目文档/DOCKER-LOCAL-BETA3-PORTAL-2026-10-08.md)已完成一次真实认证并可上网，持续心跳/恢复/注销仍待验收。两端测试包均未公开发布，正式发布另按授权安排。
+| [v2.4 发布说明](项目文档/V2.4-RELEASE.md) | 更新内容、两个下载文件、验证与待验收范围 |
+| [修复与优化总记录](项目文档/修复与优化总记录.md) | 按 Docker / Windows 查看历史改动与当前待办 |
+| [文档清单与用途](项目文档/README.md) | 各产品与共用文档的入口 |
+| [Windows 使用说明](项目文档/WINDOWS-USER-GUIDE.md) | 账户、连接、托盘、设置和故障排查 |
+| [Docker v2.4 部署说明](ESurfingDialer-Docker/01_Docker源码/ESurfingDialer-Docker-Fixed/README_RELEASE.md) | 离线安装、启动、迁移与配置保留 |
+| [Docker 历史图文教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | v1.3 的截图与旧版安装步骤 |
 
 ## 致谢
 
