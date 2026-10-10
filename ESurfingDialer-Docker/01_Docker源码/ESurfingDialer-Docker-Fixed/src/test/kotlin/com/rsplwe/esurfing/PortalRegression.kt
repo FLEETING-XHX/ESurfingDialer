@@ -41,6 +41,7 @@ object PortalRegression {
         discovery()
         reporting()
         clientRecovery()
+        retryTarget()
         changedCandidateEndsLongWait()
         return checks
     }
@@ -290,6 +291,51 @@ object PortalRegression {
         verify("interrupted worker persists final thread state", persisted["clientThreadAlive"] == false)
         verify("interrupted worker persists failure details", (persisted["lastError"] as? String)?.startsWith("PORTAL_AUTH_URL_MISSING") == true)
         States.isRunning = true
+    }
+
+    private fun retryTarget() {
+        val original = PortalCandidate("http://portal.test/login", valid, "10.1.2.3", "10.1.2.1")
+        val updated = original.copy(portalBody = valid + "<div nonce='changed'>timestamp=123</div>")
+        verify("nonce and timestamp preserve retry target", original.sameRetryTarget(updated))
+        verify("equivalent endpoint encodings preserve retry target", original.sameRetryTarget(
+            original.copy(portalBody = page(fields.replace("<![CDATA[$auth]]>", "HTTP://AUTH.TEST:80/auth.cgi")))))
+        verify("changed auth endpoint changes retry target", !original.sameRetryTarget(
+            original.copy(portalBody = valid.replace("auth.test", "other.test"))))
+        verify("changed ticket parameter changes retry target", !original.sameRetryTarget(
+            original.copy(portalBody = valid.replace("portal_node=test", "portal_node=other"))))
+        verify("changed portal identity changes retry target", !original.sameRetryTarget(original.copy(portalUrl = "http://other.test/login")))
+        verify("changed observed IP changes retry target", !original.sameRetryTarget(original.copy(userIp = "10.1.2.4")))
+        verify("changed AC IP changes retry target", !original.sameRetryTarget(original.copy(acIp = "10.1.2.5")))
+        val invalid = original.copy(portalBody = missing)
+        verify("invalid page churn preserves retry target", invalid.sameRetryTarget(invalid.copy(portalBody = missing + "nonce=2")))
+        verify("valid config repairs invalid retry target", !invalid.sameRetryTarget(original))
+        val next = Client::class.java.getDeclaredMethod("nextPortalRetrySeconds", PortalCandidate::class.java).apply { isAccessible = true }
+        val client = Client(Options("fixture", "fixture"))
+        val initial = RuntimeConfig.loginRetryInitialSeconds
+        verify("first failure uses initial delay", next.invoke(client, original) == initial)
+        verify("nonce update retains exponential delay", next.invoke(client, updated) == minOf(initial * 2, RuntimeConfig.loginRetryMaxSeconds))
+        verify("another nonce update retains failure count", next.invoke(client, updated.copy(portalBody = valid + "nonce=3")) == minOf(initial * 4, RuntimeConfig.loginRetryMaxSeconds))
+        verify("effective config change resets delay", next.invoke(client, original.copy(portalBody = valid.replace("auth.test", "other.test"))) == initial)
+
+        States.cancelAuthorization()
+        States.portalCandidate = original
+        States.isRunning = true
+        val wait = Client::class.java.getDeclaredMethod("waitForRetry", Long::class.javaPrimitiveType, PortalCandidate::class.java).apply { isAccessible = true }
+        val worker = Thread { wait.invoke(client, 30L, original) }
+        try {
+            worker.start()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+            while (worker.state != Thread.State.TIMED_WAITING && System.nanoTime() < deadline) Thread.sleep(10)
+            verify("nonce regression entered long wait", worker.state == Thread.State.TIMED_WAITING)
+            States.portalCandidate = updated
+            worker.join(5500)
+            verify("body update cannot end 30 second backoff", worker.isAlive)
+            States.portalCandidate = original.copy(portalBody = valid.replace("auth.test", "other.test"))
+            worker.join(6500)
+            verify("effective config update ends wait within one chunk", !worker.isAlive)
+        } finally {
+            States.isRunning = false; worker.interrupt(); worker.join(1000); States.isRunning = true
+        }
     }
 
     private fun changedCandidateEndsLongWait() {

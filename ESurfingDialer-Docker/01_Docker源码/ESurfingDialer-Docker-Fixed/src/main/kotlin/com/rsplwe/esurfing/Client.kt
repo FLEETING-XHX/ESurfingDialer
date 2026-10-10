@@ -15,13 +15,16 @@ import com.rsplwe.esurfing.utils.checkConnectivity
 import com.rsplwe.esurfing.utils.getTime
 import org.apache.log4j.Logger
 import java.lang.Thread.sleep
-import kotlin.system.exitProcess
+
+// 交给线程异常处理器退出进程；必须先释放所有会话锁，供 shutdown hook 清理。
+internal class RecoveryLimitReached : RuntimeException("recovery limit reached")
 
 class Client(
     private val options: Options,
     private val sessionFactory: (ByteArray) -> AuthenticationSession = ::Session,
     private val send: (String, String, HashMap<String, String>) -> NetResult<ResponseBody> = ::post,
     private val probe: () -> NetworkConnectivityResult = { checkConnectivity() },
+    private val monotonicNanos: () -> Long = System::nanoTime,
 ) : Runnable {
 
     private val logger: Logger = Logger.getLogger(Client::class.java)
@@ -43,7 +46,7 @@ class Client(
     private fun request(url: String, data: String) = send(url, data, hashMapOf("Client-ID" to active().clientId, "Algo-ID" to sessionAlgorithm))
 
     @Volatile
-    var tick: Long = 0
+    private var lastHeartbeatNanos: Long = 0
     @Volatile
     private var lastScheduledReauthLogAt: Long = 0
 
@@ -96,7 +99,7 @@ class Client(
                 }
 
                 if (session != null && HealthStatus.authenticated) {
-                    if ((System.currentTimeMillis() - tick) >= (keepRetrySeconds * 1000)) {
+                    if ((monotonicNanos() - lastHeartbeatNanos) >= (keepRetrySeconds * 1_000_000_000L)) {
                         heartbeatLog.attempt()
                         try {
                             heartbeat(ticket)
@@ -120,7 +123,7 @@ class Client(
                                 keepRetrySeconds = (failures * 5L).coerceAtMost(30)
                             }
                         }
-                        tick = System.currentTimeMillis()
+                        lastHeartbeatNanos = monotonicNanos()
                     }
                     sleep(500)
                     continue
@@ -153,11 +156,11 @@ class Client(
                 ReauthPlanner.invalidateSample()
                 HealthStatus.markError(e.code + (e.portalDiagnostics?.let { " ${it.summary()}" } ?: ""))
                 resetSessionState("authorization failed", log = false)
-                if (attemptedPortal != lastFailedPortal) loginFailures = 0
-                lastFailedPortal = attemptedPortal
-                val delay = nextLoginRetrySeconds()
+                val delay = nextPortalRetrySeconds(attemptedPortal)
                 failureReports.report(e, attemptedPortal, delay)?.let { logger.warn(it) }
                 waitForRetry(delay, attemptedPortal)
+            } catch (e: RecoveryLimitReached) {
+                throw e
             } catch (e: Exception) {
                 ReauthPlanner.invalidateSample()
                 HealthStatus.markError("client loop recovered: ${e.message}")
@@ -239,7 +242,7 @@ class Client(
         failureReports.reset()
         heartbeatLog.reset()
         recoveries = 0
-        tick = System.currentTimeMillis()
+        lastHeartbeatNanos = monotonicNanos()
         ReauthPlanner.recordAuthSuccess(request.trigger, networkKey = ReauthPlanner.networkKey(active().endpoints.userIp, active().endpoints.acIp))
         logger.info("LOGIN_SUCCESS")
     }
@@ -422,7 +425,7 @@ class Client(
         if (recoveries >= RuntimeConfig.maxRecoveriesBeforeExit) {
             logger.error("Too many recoveries ($recoveries), exiting so Docker can restart the container")
             HealthStatus.write()
-            exitProcess(1)
+            throw RecoveryLimitReached()
         }
     }
 
@@ -454,12 +457,18 @@ class Client(
     private fun waitForRetry(seconds: Long, failedPortal: PortalCandidate? = null) {
         var remaining = seconds
         while (remaining > 0 && isRunning) {
-            if (failedPortal != null && States.retryCandidate() != failedPortal) return
+            if (failedPortal != null && !failedPortal.sameRetryTarget(States.retryCandidate())) return
             val chunk = minOf(remaining, 5)
             HealthStatus.markClientProgress("retry_wait", chunk + 15)
             sleep(chunk * 1000)
             remaining -= chunk
         }
+    }
+
+    private fun nextPortalRetrySeconds(candidate: PortalCandidate): Long {
+        if (!candidate.sameRetryTarget(lastFailedPortal)) loginFailures = 0
+        lastFailedPortal = candidate
+        return nextLoginRetrySeconds()
     }
 
     private fun nextLoginRetrySeconds(): Long {

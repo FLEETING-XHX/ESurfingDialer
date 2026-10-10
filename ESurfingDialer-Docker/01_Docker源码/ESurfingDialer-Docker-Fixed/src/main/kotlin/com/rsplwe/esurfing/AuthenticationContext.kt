@@ -5,6 +5,16 @@ import com.rsplwe.esurfing.utils.NetworkConnectivityResult
 data class PortalCandidate(val portalUrl: String? = null, val portalBody: String? = null,
                            val userIp: String = "", val acIp: String = "") {
     fun discover() = PortalConfiguration.discover(portalUrl, portalBody, userIp, acIp)
+
+    // 只解析有界缓存正文，不探测网络；随机 HTML 不改变认证重试目标。
+    private val retryEndpoints: AuthenticationEndpoints? by lazy {
+        try { portalBody?.let(PortalConfiguration::parse) }
+        catch (_: AuthenticationFailure) { null }
+    }
+
+    internal fun sameRetryTarget(other: PortalCandidate?): Boolean = other != null &&
+        portalUrl == other.portalUrl && userIp == other.userIp && acIp == other.acIp &&
+        retryEndpoints == other.retryEndpoints
 }
 
 /** Captured once; a probe may update the candidate but cannot change this session. */

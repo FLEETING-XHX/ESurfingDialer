@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.rsplwe.esurfing"
-version = "1.4.0-beta.3"
+version = "2.4"
 
 repositories {
     maven(url = "https://maven.aliyun.com/repository/public")
@@ -65,3 +65,30 @@ val logRegression by tasks.registering(Exec::class) {
     commandLine("python", "scripts/check-logs.py")
 }
 tasks.check { dependsOn(logRegression) }
+
+val installerRegression by tasks.registering(Exec::class) {
+    group = "verification"
+    commandLine("python", "scripts/check-installer.py")
+}
+tasks.check { dependsOn(installerRegression) }
+
+val entrypointRegression by tasks.registering(Exec::class) {
+    group = "verification"
+    commandLine("python", "scripts/check-entrypoint.py")
+}
+val commandLineRegression by tasks.registering(JavaExec::class) {
+    group = "verification"
+    dependsOn(tasks.testClasses, entrypointRegression)
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rsplwe.esurfing.CommandLineRegression")
+    args(layout.buildDirectory.file("entrypoint-regression.cli.jsonl").get().asFile.absolutePath)
+}
+tasks.check { dependsOn(commandLineRegression) }
+
+val recoveryExitRegression by tasks.registering(JavaExec::class) {
+    group = "verification"
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rsplwe.esurfing.RecoveryExitRegression")
+}
+tasks.check { dependsOn(recoveryExitRegression) }

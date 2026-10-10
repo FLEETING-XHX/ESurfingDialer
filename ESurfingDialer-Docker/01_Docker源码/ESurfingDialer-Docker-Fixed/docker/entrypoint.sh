@@ -78,50 +78,113 @@ cleanup_loop() {
 cleanup_loop >/dev/null 2>&1 &
 cleanup_pid="$!"
 
-fifo="/tmp/esurfing-dialer-log.$$"
-rm -f "$fifo"
+runtime_dir="$(mktemp -d /tmp/esurfing-dialer.XXXXXX)"
+fifo="$runtime_dir/log"
+logger_status="$runtime_dir/logger-status"
 mkfifo "$fifo"
 # Keep the writer open between the startup message and Java opening its stream.
 exec 3<> "$fifo"
 
-TZ="$log_timezone" LC_ALL=C awk -v helper="$script_dir/log-maintenance.sh" -f "$script_dir/log-sink.awk" < "$fifo" 3>&- &
+stop_child() {
+  child_pid="$1"
+  grace="$2"
+  kill "$child_pid" 2>/dev/null || true
+  elapsed=0
+  while kill -0 "$child_pid" 2>/dev/null && [ "$elapsed" -lt "$grace" ]; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  kill -KILL "$child_pid" 2>/dev/null || true
+  wait "$child_pid" 2>/dev/null || true
+}
+
+# 日志退出通知中断父进程的 wait；平时无需轮询或反复创建监督进程。
+parent_pid="$$"
+logger_failed=0
+stop_requested=0
+trap 'logger_failed=1' USR1
+trap 'stop_requested=130' INT
+trap 'stop_requested=143' TERM
+run_logger() {
+  set +e
+  sink_stop=0
+  trap 'sink_stop=1' INT TERM
+  TZ="$log_timezone" LC_ALL=C awk -v helper="$script_dir/log-maintenance.sh" -f "$script_dir/log-sink.awk" < "$fifo" &
+  sink_pid="$!"
+  if [ "$sink_stop" -eq 0 ]; then
+    wait "$sink_pid"
+    sink_exit="$?"
+  else
+    sink_exit=143
+  fi
+  if [ "$sink_stop" -ne 0 ]; then
+    trap '' INT TERM
+    stop_child "$sink_pid" 2
+    sink_exit=143
+  fi
+  printf '%s\n' "$sink_exit" > "$logger_status"
+  kill -USR1 "$parent_pid" 2>/dev/null || true
+  exit "$sink_exit"
+}
+run_logger 3>&- &
 logger_pid="$!"
 
 echo "BACKEND_SELECTED backend=${backend} arch=${arch} dynarmic=${dynarmic_arg:+true}" >&3
 
 run_java() {
-  java ${JAVA_OPTS:-} \
+  exec java ${JAVA_OPTS:-} \
     -Duser.timezone="$timezone" \
     -jar /app/client.jar \
-    -u "${DIALER_USER}" \
-    -p "${DIALER_PASSWORD}" \
+    "--user=${DIALER_USER}" \
+    "--password=${DIALER_PASSWORD}" \
     ${dynarmic_arg}
 }
 
 if command -v su-exec >/dev/null 2>&1 && id esurfing >/dev/null 2>&1; then
-  DYNARMIC_ARG="$dynarmic_arg" DIALER_TIMEZONE="$timezone" su-exec esurfing sh -c 'java ${JAVA_OPTS:-} -Duser.timezone="$DIALER_TIMEZONE" -jar /app/client.jar -u "$DIALER_USER" -p "$DIALER_PASSWORD" ${DYNARMIC_ARG:-}' > "$fifo" 2>&1 3>&- &
+  DYNARMIC_ARG="$dynarmic_arg" DIALER_TIMEZONE="$timezone" su-exec esurfing sh -c 'exec java ${JAVA_OPTS:-} -Duser.timezone="$DIALER_TIMEZONE" -jar /app/client.jar "--user=$DIALER_USER" "--password=$DIALER_PASSWORD" ${DYNARMIC_ARG:-}' > "$fifo" 2>&1 3>&- &
 else
   DYNARMIC_ARG="$dynarmic_arg" run_java > "$fifo" 2>&1 3>&- &
 fi
 java_pid="$!"
 
-terminate() {
-  exec 3>&-
-  kill "$java_pid" 2>/dev/null || true
-  wait "$java_pid" 2>/dev/null || true
-  kill "$cleanup_pid" "$logger_pid" 2>/dev/null || true
-  rm -f "$fifo"
-}
-
-trap terminate INT TERM
-
 set +e
-wait "$java_pid"
-exit_code="$?"
+if [ "$logger_failed" -eq 0 ] && [ "$stop_requested" -eq 0 ]; then
+  wait "$java_pid"
+  exit_code="$?"
+else
+  exit_code=1
+fi
+# 后续清理不可被重复信号打断；Java 有五秒宽限，随后强制结束。
+trap '' INT TERM USR1
 exec 3>&-
+if [ "$stop_requested" -ne 0 ]; then
+  exit_code="$stop_requested"
+  stop_child "$java_pid" 5
+elif [ "$logger_failed" -ne 0 ]; then
+  echo "ERROR: log process exited; stopping Java" >&2
+  exit_code=1
+  stop_child "$java_pid" 5
+fi
 
-kill "$cleanup_pid" 2>/dev/null || true
-wait "$logger_pid" 2>/dev/null || true
-rm -f "$fifo"
+stop_child "$cleanup_pid" 2
+# 正常结束先让日志读到 EOF；磁盘/助手挂起时也不能无限等待。
+elapsed=0
+while [ ! -f "$logger_status" ] && [ "$elapsed" -lt 5 ]; do
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
+if [ ! -f "$logger_status" ]; then
+  echo "ERROR: log process did not drain within five seconds" >&2
+  stop_child "$logger_pid" 5
+  [ "$exit_code" -ne 0 ] || exit_code=1
+else
+  wait "$logger_pid" 2>/dev/null || true
+  read -r sink_exit < "$logger_status"
+  if [ "$sink_exit" -ne 0 ]; then
+    [ "$exit_code" -ne 0 ] || exit_code=1
+  fi
+fi
+rm -f "$fifo" "$logger_status"
+rmdir "$runtime_dir" 2>/dev/null || true
 
 exit "$exit_code"
