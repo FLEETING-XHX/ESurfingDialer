@@ -2,7 +2,9 @@
 
 **ESurfingDialer / Tianyi Campus** 是校园网认证工具，提供 Windows 客户端和 Docker 软路由版本，可以根据使用环境选择。
 
-本项目采用单仓库多产品结构，仓库根目录统一命名为 `ESurfingDialer`；内部 `ESurfingDialer-Windows-Client` 和 `ESurfingDialer-Docker` 分别维护两个产品。
+本项目采用单仓库多产品结构：`Products/Windows`为C#/WPF客户端，`Products/Docker`为Kotlin Docker版，`Products/DockerCpp`为C++实验版。产品文档按`Docs/Windows`、`Docs/Docker`、`Docs/DockerCpp`分类；设计、资源、研究分别在Design、Assets、Research，本地产物在artifacts。
+
+源码入口、未来Windows C++规划和测试包位置见[目录与产物说明](Docs/目录与产物说明.md)。Docker v2.4.1尚未打包；C++版尚未通过现场稳定性验收。
 
 如果你更熟悉“天翼校园”这个名字，也可以用“天翼校园认证”“校园网认证”或“ESurfingDialer”等关键词找到本项目。
 
@@ -12,7 +14,7 @@
 
 [下载 Windows 客户端 v2.4](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.4/ESurfingDialer-Windows-v2.4-Setup.exe)
 
-[查看 Windows 使用说明](项目文档/WINDOWS-USER-GUIDE.md)
+[查看 Windows 使用说明](Docs/Windows/WINDOWS-USER-GUIDE.md)
 
 v2.4 汇入认证通道、门户解析和连接恢复修复，更新界面、内嵌中文字体、托盘提示及窗口缩放。启动尺寸会按显示器缩放和工作区自动适配，支持手动等比调整。
 
@@ -24,7 +26,7 @@ v2.4 汇入认证通道、门户解析和连接恢复修复，更新界面、内
 
 [下载 Docker v2.4 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.4/ESurfingDialer-Docker-v2.4.zip)
 
-[查看 Docker 软路由图文部署教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md)
+[查看 Docker 软路由图文部署教程](Docs/Docker/教程/ESurfingDialer-Docker部署教程.md)
 
 离线包包含镜像、安装脚本和配置模板，准备好文件后无需公网拉取镜像。解压后运行 `sh install.sh`，安装默认只创建容器；停止旧认证容器后运行 `sh start.sh`。
 
@@ -35,17 +37,17 @@ v2.4 汇入门户兼容、会话恢复、健康监督、日志限额与审查修
 - 从本次发布起，Windows 和 Docker 统一使用 **v2.4**，放在[同一个 Release](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.4) 中。
 - Release 的两个产品附件分别是 Windows `.exe` 安装器与 Docker `.zip` 离线包，按文件名选择。
 - 两个产品分别维护源码与认证核心；旧版本仍可从[历史 Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 查看。
-- 真实认证与长期验收范围见[版本说明](项目文档/V2.4-RELEASE.md)，本地回归结果不能替代现场长期验证。
+- 真实认证与长期验收范围见[版本说明](Docs/V2.4-RELEASE.md)，本地回归结果不能替代现场长期验证。
 
-## 项目文档
+## Docs
 
 | 文档 | 用途 |
 | --- | --- |
-| [v2.4 发布说明](项目文档/V2.4-RELEASE.md) | 更新内容、两个下载文件、验证与待验收范围 |
-| [修复与优化总记录](项目文档/修复与优化总记录.md) | 按 Docker / Windows 查看历史改动与当前待办 |
-| [文档清单与用途](项目文档/README.md) | 各产品与共用文档的入口 |
-| [Windows 使用说明](项目文档/WINDOWS-USER-GUIDE.md) | 账户、连接、托盘、设置和故障排查 |
-| [Docker 软路由图文部署教程](ESurfingDialer-Docker/02_使用教程/ESurfingDialer-Docker部署教程.md) | WinSCP 上传、SSH 登录、v2.4 离线安装、启动及迁移 |
+| [v2.4 发布说明](Docs/V2.4-RELEASE.md) | 更新内容、两个下载文件、验证与待验收范围 |
+| [修复与优化总记录](Docs/修复与优化总记录.md) | 按 Docker / Windows 查看历史改动与当前待办 |
+| [文档清单与用途](Docs/README.md) | 各产品与共用文档的入口 |
+| [Windows 使用说明](Docs/Windows/WINDOWS-USER-GUIDE.md) | 账户、连接、托盘、设置和故障排查 |
+| [Docker 软路由图文部署教程](Docs/Docker/教程/ESurfingDialer-Docker部署教程.md) | WinSCP 上传、SSH 登录、v2.4 离线安装、启动及迁移 |
 
 ## 致谢
 

@@ -1,0 +1,40 @@
+# Windows 认证核心说明
+
+本目录是 Windows 客户端使用的 Kotlin/JVM 认证核心，入口为 `com.rsplwe.esurfing.DialerApp`。由上层 WPF 客户端启动和监督，使用 Java 21、OkHttp、Unidbg 与 Android 64 位原生资源；Docker 核心位于仓库的独立 Docker 源码目录。
+
+## 职责与边界
+
+- 探测联网/门户、有限发现认证端点、初始化会话、获取票据、登录、确认心跳与注销。
+- 维护活动会话参数、带版本的待认证请求、失败退避/暂停和单调时钟进度。
+- 写入健康 JSON，接收上层标准输入控制命令。上层负责界面、多账户、DPAPI、托盘、配置与进程恢复。
+- 生产加解密仍使用现有 `libdaproxy.so` 和 JNI 路线；测试替身不代表真实算法已兼容。未知现场 Algo-ID 仍待证据。
+
+09-29后续修复已进入本地v2.3beta.2。10-08补齐属性查询串、等值重复auth兼容及安全XML分阶段日志，源码319/63/182项通过；后续已纳入[本地v2.3beta.3包](../../../../Docs/修复与优化总记录.md#windows)，包内188项及实际EXE就绪/清理通过，当时真实校园网尚未验收；后续UA2104首轮现场结果见下文。源码阶段依据见[修复记录](../../../../Docs/修复与优化总记录.md#windows)。已公开桌面包仍为v2.3beta，核心Gradle工程版本仍为1.4.0；后者不是新的Windows安装包版本。
+
+## 构建与回归
+
+10-08后续确认旧Windows UA会使公开初始化接口返回HTTP200/空正文。已切换到经受控对照验证的 `CCTP/android11_64/2104`，保留现有ARM64原生库；327项认证、63项恢复通过，无账号测试身份已完成真实初始化与加密票据响应解析。10-09用户真实登录、首次确认心跳及外网已通过；连续心跳、恢复和长期稳定仍待验收；独立beta3修复包及依据见[通道修复记录](../../../../Docs/Windows/WINDOWS-BOOTSTRAP-UA-FIX-2026-10-08.md)。
+
+在 Windows 源码根目录，即本目录向上两级执行。Gradle 8.4 由 JDK 17 启动，核心以 JDK 21 编译/运行；离线模式需要已有缓存。
+
+```powershell
+./scripts/Build-Core.ps1 -Offline -Regression -Jdk17 'D:/Java/JDK17' -Jdk21 'D:/Java/JDK21'
+```
+
+不需要安装器时只做上述构建。JAR 位于本目录 `build/libs/*-all.jar`；发布脚本将其复制为 `core/client.jar`，同时打包 Java 运行时。请使用上层[源码说明](../../README.md)完成 WPF 与子进程回归。
+
+## 状态与运行配置
+
+上层启动时设置 `STATE_DIR` 为用户数据目录中的 data；核心默认值为 `target`。目录包含 `device-state.json` 与 `health.json`，分别记录稳定设备身份和业务健康状态。Windows 默认用户配置/日志根目录为 `%LOCALAPPDATA%\ESurfingDialerLite`，隔离验证可由上层使用 `ESURFING_CLIENT_HOME` 指定独立根目录。
+
+核心配置键见 `src/main/kotlin/com/rsplwe/esurfing/RuntimeConfig.kt`。常用键包括登录退避、心跳上限、探测总预算、门户防抖/冷却和增强连接开关；键名属于接口，保持英文。常态增强模式网络探测/健康写入为 5/15 秒，保守模式为 20/30 秒，可疑探测采用独立间隔；以代码和当次环境为准。
+
+推荐由桌面客户端录入与保存账户。独立启动核心的命令行参数是底层接口，不作为新用户安装步骤，也不将真实密码写入公共示例或日志。
+
+## 相关文档
+
+- [中文项目索引](../../../../Docs/README.md)
+- [认证计划](../../../../Docs/修复与优化总记录.md#windows)
+- [八项后续修复](../../../../Docs/修复与优化总记录.md#windows)
+- [稳定性与迁移基线](../../../../Docs/Windows/WINDOWS-STABILITY-AND-MIGRATION-BASELINE.md)
+- [待优化与待验收清单](../../../../Docs/修复与优化总记录.md)

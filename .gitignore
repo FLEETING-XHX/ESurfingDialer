@@ -1,15 +1,25 @@
 # Combined repository ignores
+/artifacts/
+/.worktrees/
+/Research/
+/Tools/maintenance/
+**/bin/
+**/obj/
+**/.idea/
 **/data/
 **/logs/
 **/.gradle/
 **/build/
 **/dist/
 **/.env
+**/.env.*
 !**/.env.example
+**/config.txt
+**/target/
 
 # Release packages are uploaded to GitHub Releases
 *.zip
-!/项目文档/归档/历史Markdown_20261008.zip
+!/Docs/归档/历史Markdown_20261008.zip
 *.tar
 *.tar.gz
 **/*.exe
@@ -24,22 +34,22 @@ Desktop.ini
 
 # Local development-tool guidance (keep files on this machine)
 /AGENTS.md
-/项目文档/PROJECT-GUIDE.md
-/项目文档/协作规则.md
-/项目文档/DEVELOPMENT-HANDOFF.md
+/Docs/PROJECT-GUIDE.md
+/Docs/协作规则.md
+/Docs/DEVELOPMENT-HANDOFF.md
 
 # Local beta deployment artifacts
-/ESurfingDialer-Docker/00_最终部署包/Docker_v1.4.0-beta.1/
+/artifacts/packages/Docker/Docker_v1.4.0-beta.1/
 
-/ESurfingDialer-Docker/00_最终部署包/Docker_v1.4.0-beta.2/
+/artifacts/packages/Docker/Docker_v1.4.0-beta.2/
 
 # Beta packages stay local until the coordinated release is authorized.
-/ESurfingDialer-Docker/00_最终部署包/*beta*/
-/ESurfingDialer-Windows-Client/00_最终安装包/*beta*/
+/artifacts/packages/Docker/*beta*/
+/artifacts/packages/Windows/*beta*/
 
 # v2.4 delivery evidence and binaries stay local; product assets go to Releases.
-/ESurfingDialer-Windows-Client/00_最终安装包/Windows客户端_v2.4/
-/ESurfingDialer-Docker/00_最终部署包/Docker_v2.4/
+/artifacts/packages/Windows/Windows客户端_v2.4/
+/artifacts/packages/Docker/Docker_v2.4/
 
 # 外部参考源码只在本机保留，避免再次误提交。
 /ESurfingClient-CVersion-2.1.1-r4(另一个Github相关开源项目源码)/
