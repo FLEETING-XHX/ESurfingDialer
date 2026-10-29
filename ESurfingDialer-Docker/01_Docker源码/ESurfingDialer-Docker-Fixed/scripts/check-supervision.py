@@ -56,7 +56,7 @@ case "$1" in
     *) echo 'true false false unless-stopped' ;;
    esac ;;
  exec)
-   if [ "$2" = '--user' ]; then printf 'RECYCLE\n' >> "$CALLS_FILE"; else cat "$TEST_HEALTH"; fi ;;
+   if [ "$2" = '--user' ]; then printf 'RECYCLE\n' >> "$CALLS_FILE"; elif [ "${TEST_MODE:-}" = conflict ]; then printf '%s\n' '__ESURFING_CORE_STATE_IN_USE__'; else cat "$TEST_HEALTH"; fi ;;
  stats) echo '1.00%,20MiB / 1GiB,8' ;;
  *) echo 'Unexpected docker operation' >&2; exit 99 ;;
 esac
@@ -68,6 +68,7 @@ esac
         env = os.environ.copy()
         # Forward slashes also work for the Git shell on Windows.
         env.update(TEST_NOW=str(now), STATE_DIR=(root / "state").as_posix(),
+            CORE_STATE_CONFLICT_FILE=(root / "conflict-marker").as_posix(),
             TEST_HEALTH=(root / "state/health.json").as_posix(),
             CALLS_FILE=(root / "calls").as_posix(), COUNTER_FILE=(root / "sleeps").as_posix(),
             INSPECT_COUNTER=(root / "inspects").as_posix(),
@@ -88,6 +89,9 @@ esac
             checks += 1; results.append(label)
 
         health("fresh authenticated", normal, True)
+        (root / "conflict-marker").write_text("CORE_STATE_IN_USE")
+        health("container conflict cannot borrow another core's valid health", normal, False)
+        (root / "conflict-marker").unlink()
         for field in ["lastUpdatedAt", "lastNetworkCheckCompletedAt", "lastClientProgressAt", "lastLoginSuccessAt", "lastHeartbeatSuccessAt", "lastNetworkCheckAt", "lastNetworkCheckSuccessAt", "lastPortalReauthRequestAt"]:
             changed = normal | {field: now + 300}
             health("future " + field, changed, False)
@@ -98,6 +102,12 @@ esac
         health("unbounded stage timeout", normal | {"clientStageTimeoutSeconds": 9999}, False)
         health("missing thread", normal | {"clientThreadAlive": False}, False)
         health("no authentication", normal | {"authenticated": False}, False)
+        unowned = normal | {"authenticated": False, "networkReachable": True, "connectionState": "network-online-unowned", "lastLoginSuccessAt": 0, "lastHeartbeatSuccessAt": 0}
+        health("explicit fresh network without owned session is usable", unowned, True)
+        health("unowned online needs a fresh successful probe", unowned | {"lastNetworkCheckSuccessAt": now - 1000}, False)
+        health("unowned state cannot override failed probe", unowned | {"networkReachable": False}, False)
+        health("unowned online cannot hide stalled thread", unowned | {"clientThreadAlive": False}, False)
+        health("network flag alone cannot bypass authentication", unowned | {"connectionState": "authenticating"}, False)
         health("fresh login without heartbeat", normal | {"lastHeartbeatSuccessAt": 0}, True)
         health("stale authentication", normal | {"lastHeartbeatSuccessAt": now - 1000, "lastLoginSuccessAt": now - 1000}, False)
         health("configured slow probe interval", normal | {"networkCheckIntervalSeconds": 300, "lastNetworkCheckCompletedAt": now - 250}, True)
@@ -126,6 +136,7 @@ esac
             checks += 1; results.append(label)
 
         watchdog("healthy liveness")
+        watchdog("ownership pause is not recycled even when shared health is stale", normal | {"lastUpdatedAt": now - 1000}, mode="conflict")
         for mode in ["stopped", "missing", "paused", "restarting", "no-policy"]:
             watchdog("no recycle " + mode, normal | {"clientThreadAlive": False}, mode=mode)
         watchdog("explicit pause", normal | {"clientThreadAlive": False}, pause=True)

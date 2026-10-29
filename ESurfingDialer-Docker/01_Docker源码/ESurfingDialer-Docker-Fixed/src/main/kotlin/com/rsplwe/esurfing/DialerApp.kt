@@ -11,6 +11,8 @@ import kotlin.system.exitProcess
 object DialerApp {
 
     private val logger: Logger = Logger.getLogger(DialerApp::class.java)
+    // Keep the lock alive through all shutdown hooks and final health reporter writes.
+    private var ownership: CoreStateOwnership? = null
 
     internal fun commandLineOptions(): Options {
         val options = Options()
@@ -42,7 +44,6 @@ object DialerApp {
         // root directory
         if (!States.rootDir.exists()) States.rootDir.mkdirs()
         if (States.rootDir.isFile) throw IllegalArgumentException("rootDir must be directory: " + States.rootDir)
-        DeviceIdentityStore.loadIntoStates()
 
         val options = commandLineOptions()
 
@@ -58,6 +59,13 @@ object DialerApp {
             exitProcess(1)
         }
 
+        ownership = CoreStateOwnership.acquire(States.rootDir)
+        if (ownership == null) {
+            logger.error("CORE_STATE_IN_USE: 此数据目录已有认证核心，请勿让多个容器共享同一个data目录。")
+            exitProcess(73)
+        }
+        DeviceIdentityStore.loadIntoStates()
+
         States.useDynarmic = cmd.hasOption("dynarmic")
         HealthStatus.startReporter()
 
@@ -68,6 +76,7 @@ object DialerApp {
                     try {
                         val networkStatus = try { checkConnectivity() } finally { HealthStatus.markNetworkCheckCompleted() }
                         if (!isRunning) break
+                        HealthStatus.networkReachable = networkStatus.status == ConnectivityStatus.SUCCESS
                         ReauthPlanner.observeNetwork(networkStatus)
 
                         when (networkStatus.status) {

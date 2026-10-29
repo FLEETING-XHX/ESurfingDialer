@@ -28,6 +28,13 @@ object OperationsRegression {
     }
 
     @JvmStatic fun main(args: Array<String>) {
+        if (args.firstOrNull() == "--owner-child") {
+            val ownership = CoreStateOwnership.acquire(States.rootDir) ?: kotlin.system.exitProcess(73)
+            File(States.rootDir, "owner-ready").writeText("ready")
+            Thread.sleep(30000)
+            ownership.close()
+            return
+        }
         if (args.firstOrNull() == "--stall-child") {
             HealthStatus.clientThreadAlive = true
             HealthStatus.markClientProgress("fixture_stall", 5)
@@ -50,6 +57,7 @@ object OperationsRegression {
         verify("health error JSON escaped", health["lastError"] == HealthStatus.lastError)
         verify("schema and progress published", health["schemaVersion"] == 2L && health["clientStageDeadlineAt"] is Long)
         longRetryProgress()
+        ownershipProcess()
         supervisorExit()
         println("Docker operations regression: $checks checks passed")
     }
@@ -96,6 +104,40 @@ object OperationsRegression {
         } finally { if (process.isAlive) process.destroyForcibly() }
     }
 
+    private fun ownershipProcess() {
+        val directory = File(root, "ownership-process").apply { mkdir() }
+        val executable = File(System.getProperty("java.home"), "bin/" + if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
+        fun start(name: String): Process {
+            val builder = ProcessBuilder(executable.path, "-cp", System.getProperty("java.class.path"), OperationsRegression::class.java.name, "--owner-child")
+            builder.environment()["STATE_DIR"] = directory.absolutePath
+            builder.redirectErrorStream(true).redirectOutput(File(directory, "$name.log"))
+            return builder.start()
+        }
+        val first = start("first")
+        var second: Process? = null
+        try {
+            repeat(100) { if (!File(directory, "owner-ready").exists()) Thread.sleep(30) }
+            verify("real owner child acquired state", File(directory, "owner-ready").exists() && first.isAlive)
+            second = start("second")
+            verify("duplicate child cannot acquire live owner's directory", second.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) && second.exitValue() == 73)
+            verify("rejected child never publishes health", !File(directory, "health.json").exists())
+            first.destroyForcibly()
+            verify("force-killed owner actually exits", first.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) && !first.isAlive)
+            // Process signaling and the filesystem's final lock teardown need not become
+            // visible in the same instruction on the Windows test host.
+            var replacement: CoreStateOwnership? = null
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3)
+            while (replacement == null && System.nanoTime() < deadline) {
+                replacement = CoreStateOwnership.acquire(directory)
+                if (replacement == null) Thread.sleep(20)
+            }
+            replacement.use { verify("OS releases ownership after force-killed child", it != null) }
+        } finally {
+            if (first.isAlive) first.destroyForcibly()
+            second?.let { if (it.isAlive) it.destroyForcibly() }
+        }
+    }
+
     private fun jsonAndFiles() {
         val value = "中文\"\\\r\n\t" + 0.toChar() + 12.toChar()
         val parsed = StateJson.decode(StateJson.encode(linkedMapOf("text" to value, "number" to Long.MAX_VALUE, "flag" to true, "empty" to null)))
@@ -122,87 +164,90 @@ object OperationsRegression {
     }
 
     private fun samples() {
-        fun setup(name: String): ReauthPlannerEngine {
-            wall = base; nanos = 10_000_000_000L
-            return engine(name).also { it.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall, "same") }
-        }
-        val trusted = setup("trusted")
-        advance(7200); trusted.observePortal("same"); trusted.recordHeartbeatFailure(true)
-        trusted.recordAuthSuccess(AuthorizationTrigger.PORTAL, wall, "same")
-        verify("correlated same-network sample accepted", trusted.snapshot().successfulAuthSamples == 1 && trusted.snapshot().lastObservedLifetimeSeconds == 7200L)
-        for (scenario in listOf("initial", "scheduled", "no-heartbeat", "transport", "outage", "changed-ip", "clock-jump", "restart")) {
-            var e = setup(scenario)
-            if (scenario == "restart") e = engine(scenario)
-            advance(7200, if (scenario == "clock-jump") 14400 else 7200)
-            e.observePortal(if (scenario == "changed-ip") "different" else "same")
-            if (scenario != "no-heartbeat") e.recordHeartbeatFailure(scenario != "transport")
-            if (scenario == "outage") e.invalidateSample()
-            val trigger = when (scenario) { "initial" -> AuthorizationTrigger.INITIAL; "scheduled" -> AuthorizationTrigger.SCHEDULED; else -> AuthorizationTrigger.PORTAL }
-            e.recordAuthSuccess(trigger, wall, if (scenario == "changed-ip") "different" else "same")
-            verify("untrusted $scenario sample ignored", e.snapshot().successfulAuthSamples == 0)
-        }
-        val disabled = setup("disabled-evidence")
-        advance(1800); disabled.observePortal("same"); disabled.recordHeartbeatFailure(true)
-        disabled.recordAuthSuccess(AuthorizationTrigger.PORTAL, wall, "same")
-        verify("short interval never learned", disabled.snapshot().successfulAuthSamples == 0)
+        wall = base
+        val e = engine("daily-no-learning")
+        e.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall, "same")
+        advance(7200)
+        e.observePortal("same"); e.recordHeartbeatFailure(true)
+        e.recordAuthSuccess(AuthorizationTrigger.PORTAL, wall, "same")
+        verify("daily plan never estimates session lifetime", e.snapshot().successfulAuthSamples == 0 && e.snapshot().estimatedLifetimeSeconds == 86400L)
     }
 
     private fun scheduleAndState() {
-        wall = base; nanos = 10_000_000_000L
-        for ((start, end) in listOf(4 to 6, 22 to 6, 0 to 24, 4 to 4)) {
-            val e = engine("window-$start-$end", start, end)
-            for (offset in listOf(0L, 3600L, 20 * 3600L, 25 * 3600L)) for (estimate in listOf(3600L, 7200L, 48 * 3600L, 7 * 86400L)) {
-                val auth = base + offset
-                val next = e.computeNext(auth, estimate)
-                verify("future bounded schedule $start/$end $offset/$estimate", next >= auth + ReauthPlannerEngine.MIN_REAUTH_GAP && next <= auth + estimate)
+        wall = base - 3600 // 03:00 UTC+8
+        val e = engine("daily")
+        verify("before start waits", !e.isDue(wall) && e.isWaiting(wall))
+        wall = base
+        verify("starts at 04:00", e.isDue(wall) && e.shouldTrigger(wall))
+        verify("one daily claim", !e.shouldTrigger(wall) && !e.isDue(wall + 30))
+        verify("restart retains daily claim", !engine("daily").shouldTrigger(wall))
+        wall += 86400
+        verify("next day is eligible", engine("daily").shouldTrigger(wall))
+        wall -= 86400
+        verify("clock rollback never repeats a prior day", !engine("daily").shouldTrigger(wall))
+        wall = base + 3 * 86400 + 3600
+        verify("startup inside window catches up", engine("catchup").shouldTrigger(wall))
+        wall = base + 2 * 3600
+        verify("missed window never reauths during daytime", !engine("missed").shouldTrigger(wall) && engine("missed").snapshot().nextPlannedReauthAt == base + 86400)
+        wall = base + 59
+        verify("equal start/end is one minute fixed-time window", engine("fixed", 4, 4).shouldTrigger(wall))
+        wall = base + 60
+        verify("fixed time does not mean all day", !engine("fixed-missed", 4, 4).shouldTrigger(wall))
+        rejected("end earlier than start") { engine("bad-window", 6, 4) }
+        rejected("start outside day") { engine("bad-start", 24, 24) }
+        rejected("end outside day") { engine("bad-end", 4, 25) }
+        wall = base
+        val normal = engine("normal-login")
+        normal.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall)
+        verify("successful ordinary login in window satisfies the day", !normal.shouldTrigger(wall))
+        val off = engine("off", enabled = false)
+        off.recordAuthSuccess(AuthorizationTrigger.PORTAL, wall)
+        verify("off disables planned reauth only", !off.shouldTrigger(wall) && off.snapshot().lastAuthSuccessAt == wall)
+        val failure = engine("failed-write", writer = { _, _ -> throw java.io.IOException("fixture") })
+        verify("failed claim persistence cannot trigger", !failure.shouldTrigger(wall) && failure.isDue(wall))
+        File(root, "corrupt.json").writeText("{broken")
+        verify("corrupt ledger skips today rather than repeating", !engine("corrupt").shouldTrigger(wall))
+        verify("repaired corrupt ledger can schedule tomorrow", engine("corrupt").shouldTrigger(wall + 86400))
+        File(root, "empty-ledger.json").writeText("{}")
+        verify("empty JSON is corrupt history and skips today", !engine("empty-ledger").shouldTrigger(wall))
+        File(root, "future-schema.json").writeText("{\"schemaVersion\":999}")
+        verify("unknown schema remains paused and is not overwritten", !engine("future-schema").shouldTrigger(wall)
+            && engine("future-schema").snapshot().stateInvalid && File(root, "future-schema.json").readText().contains("999"))
+        val offLogin = engine("off-login", enabled = false)
+        offLogin.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall)
+        verify("ordinary login while disabled satisfies the day when reenabled", !engine("off-login").shouldTrigger(wall))
+        seed("legacy", auth = base, next = base + 86400)
+        verify("old plan migrates successful login without another forced login", !engine("legacy").shouldTrigger(wall))
+        val directory = File(root, "owner").apply { mkdir() }
+        val owner = CoreStateOwnership.acquire(directory)
+        verify("first core acquires state ownership", owner != null)
+        verify("second core cannot own same state", CoreStateOwnership.acquire(directory) == null)
+        owner!!.close()
+        CoreStateOwnership.acquire(directory).use { verify("released owner can be reacquired", it != null) }
+        unownedOnline()
+    }
+
+    private fun unownedOnline() {
+        HealthStatus.resetSession()
+        HealthStatus.markNetworkCheckSuccess()
+        States.cancelAuthorization()
+        States.networkStatus = com.rsplwe.esurfing.utils.ConnectivityStatus.SUCCESS
+        States.portalCandidate = PortalCandidate()
+        States.isRunning = true
+        val worker = Thread(Client(Options("fixture", "fixture")))
+        worker.start()
+        try {
+            var health: Map<String, Any?> = emptyMap()
+            repeat(100) {
+                HealthStatus.write()
+                health = StateJson.decode(StateFiles.read(File(States.rootDir, "health.json")))
+                if (health["connectionState"] != "network-online-unowned") Thread.sleep(10)
             }
+            verify("online without owned session is explicit", health["connectionState"] == "network-online-unowned" && health["networkReachable"] == true)
+            verify("network availability does not fabricate authentication", !HealthStatus.authenticated && worker.isAlive)
+        } finally {
+            States.isRunning = false; worker.interrupt(); worker.join(3000)
+            HealthStatus.networkReachable = false; States.networkStatus = com.rsplwe.esurfing.utils.ConnectivityStatus.DEFAULT; States.isRunning = true
         }
-        val wrapped = engine("wrapped", 22, 6)
-        verify("cross-midnight window boundaries", wrapped.isInWindow(base - 5 * 3600) && wrapped.isInWindow(base) && !wrapped.isInWindow(base + 2 * 3600))
-        val e = engine("grace")
-        e.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall, "same")
-        val next = e.snapshot().nextPlannedReauthAt
-        wall = next
-        verify("due plan triggers in safe window", e.shouldTrigger(wall))
-        wall = base
-        seed("outside", next = base + 3 * 3600)
-        val outside = engine("outside")
-        wall = base + 3 * 3600
-        verify("outside window waits", outside.isWaiting(wall) && !outside.shouldTrigger(wall))
-        advance(2 * 3600)
-        verify("window grace permits overdue fallback", outside.shouldTrigger(wall) && !outside.isWaiting(wall))
-        wall = base
-        val off = engine("disabled", enabled = false)
-        off.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall, "same")
-        advance(3 * 86400)
-        verify("disabled planner never triggers", !off.shouldTrigger(wall) && !off.isWaiting(wall))
-        wall = base
-        val rollback = engine("rollback")
-        rollback.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall, "same")
-        wall -= 300
-        verify("rollback discards stale schedule", !rollback.shouldTrigger(wall) && rollback.snapshot().lastAuthSuccessAt == 0L)
-        wall = base
-        seed("legacy", schema = 1, next = base - 1800, observed = 3600, samples = 3)
-        val migrated = engine("legacy").snapshot()
-        verify("legacy past target repaired", migrated.nextPlannedReauthAt >= base + 1800 && migrated.successfulAuthSamples == 0 && migrated.lastObservedLifetimeSeconds == 0L)
-        for (kind in listOf("future-auth", "future-update", "huge-next", "invalid-estimate", "negative-samples", "malformed", "duplicate", "oversized")) {
-            wall = base
-            seed(kind, auth = if (kind == "future-auth") base + 300 else base,
-                updated = if (kind == "future-update") base + 300 else base,
-                next = if (kind == "huge-next") Long.MAX_VALUE else base + 2700,
-                estimate = if (kind == "invalid-estimate") 1 else 3600,
-                samples = if (kind == "negative-samples") -1 else 0)
-            val file = File(root, "$kind.json")
-            if (kind == "malformed") file.writeText("{partial")
-            if (kind == "duplicate") file.writeText(file.readText().replace("\"schemaVersion\": 2", "\"schemaVersion\": 2,\n  \"schemaVersion\": 2"))
-            if (kind == "oversized") file.writeText("x".repeat(32769))
-            val s = engine(kind).snapshot()
-            verify("invalid $kind state rejected", s.lastAuthSuccessAt == 0L && s.estimatedLifetimeSeconds == ReauthPlannerEngine.DEFAULT_INTERVAL && s.nextPlannedReauthAt == 0L)
-        }
-        seed("write-failure")
-        val previous = File(root, "write-failure.json").readText()
-        val failed = engine("write-failure", writer = { _, _ -> throw java.io.IOException("fixture") })
-        failed.recordAuthSuccess(AuthorizationTrigger.INITIAL, wall, "same")
-        verify("failed persistence preserves old file and in-memory recovery", File(root, "write-failure.json").readText() == previous && failed.snapshot().nextPlannedReauthAt > wall)
     }
 }

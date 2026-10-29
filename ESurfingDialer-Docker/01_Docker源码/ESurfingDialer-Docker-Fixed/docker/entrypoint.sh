@@ -2,6 +2,9 @@
 set -eu
 
 state_dir="${STATE_DIR:-/data}"
+# Container-local marker; never publish a conflict into another core's shared data.
+conflict_file="${CORE_STATE_CONFLICT_FILE:-/tmp/esurfing-core-state-conflict}"
+rm -f "$conflict_file"
 log_dir="${LOG_DIR:-$state_dir/logs}"
 log_retention_days="${LOG_RETENTION_DAYS:-3}"
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -31,6 +34,16 @@ if [ -z "${DIALER_PASSWORD:-}" ]; then
   echo "ERROR: DIALER_PASSWORD is required" >&2
   exit 2
 fi
+
+daily_start="${AUTO_REAUTH_SAFE_WINDOW_START_HOUR:-4}"
+daily_end="${AUTO_REAUTH_SAFE_WINDOW_END_HOUR:-6}"
+case "$daily_start:$daily_end" in *[!0-9:]*|:*) echo 'ERROR: daily reauthentication hours must be numeric' >&2; exit 2 ;; esac
+if [ "${#daily_start}" -gt 2 ] || [ "${#daily_end}" -gt 2 ] ||
+   [ "$daily_start" -gt 23 ] || [ "$daily_end" -gt 24 ] || [ "$daily_end" -lt "$daily_start" ]; then
+  echo 'ERROR: daily reauthentication end must not be earlier than start (start 0-23, end 0-24)' >&2
+  exit 2
+fi
+case "${AUTO_REAUTH_ENABLED:-1}" in 0|1) ;; *) echo 'ERROR: AUTO_REAUTH_ENABLED must be 0 or 1' >&2; exit 2 ;; esac
 
 case "$backend" in
   auto)
@@ -154,6 +167,9 @@ if [ "$logger_failed" -eq 0 ] && [ "$stop_requested" -eq 0 ]; then
 else
   exit_code=1
 fi
+if [ "$exit_code" -eq 73 ] && [ "$stop_requested" -eq 0 ]; then
+  printf '%s\n' 'CORE_STATE_IN_USE' > "$conflict_file"
+fi
 # 后续清理不可被重复信号打断；Java 有五秒宽限，随后强制结束。
 trap '' INT TERM USR1
 exec 3>&-
@@ -187,4 +203,14 @@ fi
 rm -f "$fifo" "$logger_status"
 rmdir "$runtime_dir" 2>/dev/null || true
 
+if [ "$exit_code" -eq 73 ] && [ "$stop_requested" -eq 0 ]; then
+  echo 'ERROR: CORE_STATE_IN_USE; automatic startup paused. Give each container its own data directory, then restart explicitly.' >&2
+  # Exiting here would let unless-stopped repeatedly launch the conflicting core.
+  # Remain visibly unhealthy and idle, but honor docker stop without leaving a child.
+  pause_pid=""
+  trap '[ -z "$pause_pid" ] || { kill "$pause_pid" 2>/dev/null || true; wait "$pause_pid" 2>/dev/null || true; }; exit 143' TERM
+  trap '[ -z "$pause_pid" ] || { kill "$pause_pid" 2>/dev/null || true; wait "$pause_pid" 2>/dev/null || true; }; exit 130' INT
+  printf '%s\n' 'CORE_STATE_IN_USE paused' > "$conflict_file"
+  while :; do sleep 3600 & pause_pid="$!"; wait "$pause_pid"; done
+fi
 exit "$exit_code"

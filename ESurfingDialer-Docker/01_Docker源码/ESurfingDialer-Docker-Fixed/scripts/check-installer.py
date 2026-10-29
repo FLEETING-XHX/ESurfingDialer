@@ -50,7 +50,7 @@ def main():
         (fixture / "data").mkdir()
         (fixture / "images").mkdir()
         (fixture / "install.sh").write_bytes(install)
-        (fixture / "images/esurfing-dialer-v1.3-amd64.tar.gz").write_bytes(gzip.compress(b"synthetic image only"))
+        (fixture / "images/esurfing-dialer-v2.4.1-amd64.tar.gz").write_bytes(gzip.compress(b"synthetic image only"))
         (fixture / "data/device-state.json").write_bytes(identity)
         commands = {
             "docker": '#!/bin/sh\nprintf "%s\\n" "$*" >> "$INSTALLER_CALLS"\n[ "${1:-}" != load ] || cat >/dev/null\nexit 0\n',
@@ -86,7 +86,7 @@ def main():
             check(records.count(password) == 1, f"case {index}, run {run}: password changed or merged")
             for preserved in lines[:2]:
                 check(records.count(preserved) == 1, f"case {index}, run {run}: existing setting changed")
-            check(records.count(b"DIALER_IMAGE=esurfing-dialer:v1.3") == 1,
+            check(records.count(b"DIALER_IMAGE=esurfing-dialer:v2.4.1") == 1,
                 f"case {index}, run {run}: image tag missing or merged")
             for key, value in defaults.items():
                 expected = value if key in missing else custom[key]

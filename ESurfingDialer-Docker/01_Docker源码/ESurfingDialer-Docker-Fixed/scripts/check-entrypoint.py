@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--sh", default=shutil.which("sh") or "C:/Program Files/Git/bin/sh.exe")
     parser.add_argument("--report", default="build/entrypoint-regression.json")
     parser.add_argument("--entrypoint", type=Path)
-    parser.add_argument("--only", choices=("all", "logger-failure", "logger-hang"), default="all")
+    parser.add_argument("--only", choices=("all", "logger-failure", "logger-hang", "ownership-conflict", "validation"), default="all")
     args = parser.parse_args()
     source = Path(__file__).resolve().parent.parent
     root = source / "build" / ("entrypoint-regression-" + uuid.uuid4().hex[:8])
@@ -36,7 +36,7 @@ def main():
         path.write_text(text, encoding="utf-8", newline="\n")
         path.chmod(0o755)
 
-    def run(name, branch="fallback", password="fixture", backend="unicorn2", failure="", stubborn=False, terminate=False):
+    def run(name, branch="fallback", password="fixture", backend="unicorn2", failure="", stubborn=False, terminate=False, conflict=False):
         fixture = root / name
         fixture.mkdir()
         (fixture / "bin").mkdir()
@@ -59,7 +59,9 @@ exec sh ./real-maintenance.sh "$@"
             write(fixture / "bin/awk", "#!/bin/sh\nexit 0\n")
         if failure == "hang":
             write(fixture / "bin/awk", "#!/bin/sh\nprintf '%s\\n' \"$$\" > sink-pid\ntrap '' TERM\nwhile :; do :; done\n")
-        if (not failure or failure == "hang") and not terminate:
+        if conflict:
+            java = "#!/bin/sh\nprintf '%s\\n' \"$$\" > java-pid\nprintf 'launched\\n' >> java-launches\nexit 73\n"
+        elif (not failure or failure == "hang") and not terminate:
             write(fixture / "java-fixture.py", """import json, sys, time
 from pathlib import Path
 Path('argv.json').write_text(json.dumps(sys.argv[1:]), encoding='utf-8')
@@ -79,7 +81,17 @@ sys.exit(7)
             java += "while :; do printf '%0512d\\n' 0 2>/dev/null; done\n" if failure and failure != "early" else "while :; do :; done\n"
         write(fixture / "bin/java", java)
         launcher = "#!/bin/sh\nexport PATH=\"$PWD/bin:$PATH\"\n"
-        if terminate:
+        if conflict:
+            launcher += """sh entrypoint.sh &
+target=$!
+attempt=0
+while ! grep -q paused conflict-marker 2>/dev/null && [ "$attempt" -lt 100 ]; do sleep .1; attempt=$((attempt + 1)); done
+sleep 1
+if grep -q paused conflict-marker && kill -0 "$target" 2>/dev/null; then printf 'paused' > conflict-observed; fi
+kill -TERM "$target"
+wait "$target"
+"""
+        elif terminate:
             launcher += """sh entrypoint.sh &
 target=$!
 attempt=0
@@ -92,7 +104,8 @@ wait "$target"
         write(fixture / "launch.sh", launcher)
         env = os.environ | {"STATE_DIR": "state", "LOG_DIR": "state/logs", "DIALER_USER": '-u"fixture user"',
             "DIALER_PASSWORD": password, "DIALER_BACKEND": backend, "FAILURE": failure,
-            "LOG_FILE_MAX_BYTES": "1024", "LOG_TOTAL_MAX_BYTES": "3072", "JAVA_OPTS": ""}
+            "LOG_FILE_MAX_BYTES": "1024", "LOG_TOTAL_MAX_BYTES": "3072", "JAVA_OPTS": "",
+            "CORE_STATE_CONFLICT_FILE": "conflict-marker"}
         start = time.monotonic()
         process = subprocess.Popen([args.sh, "launch.sh"], cwd=fixture, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=os.name != "nt")
@@ -107,11 +120,11 @@ wait "$target"
             process.communicate(timeout=5)
             raise AssertionError(name + ": entrypoint did not finish within 18 seconds")
         elapsed = time.monotonic() - start
-        if failure or terminate:
-            expected = 143 if terminate else (7 if failure == "hang" else 1)
+        if failure or terminate or conflict:
+            expected = 143 if terminate or conflict else (7 if failure == "hang" else 1)
             verify(process.returncode == expected, name + ": failure exit code " + str(process.returncode))
             verify(elapsed < 16, name + ": bounded shutdown")
-            verify(b"log process" in stderr or terminate, name + ": failure diagnostic")
+            verify(b"log process" in stderr or terminate or (conflict and b"CORE_STATE_IN_USE" in stderr), name + ": failure diagnostic")
             for pid_file in (fixture / "java-pid", fixture / "sink-pid"):
                 if not pid_file.exists():
                     continue
@@ -119,6 +132,9 @@ wait "$target"
                 pid = pid_file.read_text().strip()
                 alive = subprocess.run([args.sh, "-c", 'kill -0 "$1" 2>/dev/null', "probe", pid], capture_output=True)
                 verify(alive.returncode != 0, name + ": owned child was reaped (" + pid_file.name + ")")
+            if conflict:
+                verify((fixture / "conflict-observed").exists(), name + ": ownership conflict pauses entrypoint without restart")
+                verify((fixture / "java-launches").read_text().splitlines() == ["launched"], name + ": conflicting Java was launched only once")
         else:
             verify(process.returncode == 7, name + ": Java exit code preserved")
             verify(b"BACKEND_SELECTED" in stdout and b"JAVA_FIXTURE_LAST" in stdout, name + ": stdout drained")
@@ -131,11 +147,25 @@ wait "$target"
             cli.append({"argv": argv[argv.index("-jar") + 2:], "user": env["DIALER_USER"], "password": password, "dynarmic": backend == "dynarmic"})
         cases.append({"name": name, "seconds": round(elapsed, 3), "exitCode": process.returncode})
 
+    if args.only in ("all", "validation"):
+        validation = root / "validation"
+        validation.mkdir()
+        write(validation / "entrypoint.sh", (source / "docker/entrypoint.sh").read_text(encoding="utf-8"))
+        for start_hour, end_hour in [(6, 4), (-1, 6), (24, 24), (4, 25), ("bad", 6)]:
+            env = os.environ | {"DIALER_USER": "fixture", "DIALER_PASSWORD": "fixture",
+                "CORE_STATE_CONFLICT_FILE": (validation / "conflict-marker").as_posix(),
+                "AUTO_REAUTH_SAFE_WINDOW_START_HOUR": str(start_hour), "AUTO_REAUTH_SAFE_WINDOW_END_HOUR": str(end_hour)}
+            result = subprocess.run([args.sh, "entrypoint.sh"], cwd=validation, env=env, capture_output=True, timeout=5)
+            verify(result.returncode == 2 and b"reauthentication" in result.stderr, "invalid daily window rejected before Java")
+
     if args.only == "logger-failure":
         run("logger-fallback-maintain", failure="maintain")
     if args.only == "logger-hang":
         for branch in ("fallback", "su-exec"):
             run("logger-" + branch + "-hang", branch=branch, failure="hang")
+    if args.only == "ownership-conflict":
+        for branch in ("fallback", "su-exec"):
+            run("ownership-conflict-" + branch, branch=branch, conflict=True)
     for branch in (() if args.only != "all" else ("fallback", "su-exec")):
         for index, password in enumerate(("-d", "--dynarmic", '"quoted fixture"', "spaces $$ # \\ 中文=1")):
             for backend in ("unicorn2", "dynarmic"):
@@ -145,6 +175,7 @@ wait "$target"
         run("logger-" + branch + "-stubborn", branch=branch, failure="maintain", stubborn=True)
         run("logger-" + branch + "-hang", branch=branch, failure="hang")
         run("terminate-" + branch, branch=branch, stubborn=True, terminate=True)
+        run("ownership-conflict-" + branch, branch=branch, conflict=True)
     report = Path(args.report)
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps({"checks": checks, "cases": cases, "cli": cli}, ensure_ascii=False, indent=2), encoding="utf-8")

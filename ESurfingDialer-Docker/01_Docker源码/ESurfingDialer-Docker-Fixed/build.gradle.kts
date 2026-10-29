@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.rsplwe.esurfing"
-version = "2.4"
+version = "2.4.1"
 
 repositories {
     maven(url = "https://maven.aliyun.com/repository/public")
@@ -92,3 +92,17 @@ val recoveryExitRegression by tasks.registering(JavaExec::class) {
     mainClass.set("com.rsplwe.esurfing.RecoveryExitRegression")
 }
 tasks.check { dependsOn(recoveryExitRegression) }
+
+val deviceIdentityRegression by tasks.registering(JavaExec::class) {
+    group = "verification"
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rsplwe.esurfing.DeviceIdentityRegression")
+}
+tasks.check { dependsOn(deviceIdentityRegression) }
+
+val deploymentConfigRegression by tasks.registering(Exec::class) {
+    group = "verification"
+    commandLine("python", "scripts/check-deployment-config.py")
+}
+tasks.check { dependsOn(deploymentConfigRegression) }

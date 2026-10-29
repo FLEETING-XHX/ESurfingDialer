@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 import tarfile
 import zipfile
+from deployment_config import set_version, startup_script
 
 BASE_SHA256 = "93bca5389a75eb997f1aec0d0316f433401e758129f01d7fa862ffb2bb9fb5fd"
 VERSION = "v1.4.0-beta.3"
@@ -139,8 +140,7 @@ def main():
     verify_image(image_path, args.jar)
     for name in [".env.example", "docker-compose.yml", "install.sh", "LICENSE", "CHANGELOG.md"]:
         text = (source / name).read_text(encoding="utf-8")
-        if name != "CHANGELOG.md":
-            text = text.replace("v1.3", VERSION)
+        text = set_version(name, text, VERSION, TAG)
         if name == "docker-compose.yml":
             text = "name: " + PROJECT + "\n" + text.replace("container_name: ESurfingDialer", "container_name: " + CONTAINER)
         if name == "install.sh":
@@ -166,24 +166,7 @@ def main():
     (package / "docker-compose.build.yml").write_text(
         "services:\n  esurfing-dialer:\n    build:\n      context: .\n      dockerfile: Dockerfile.runtime\n", encoding="utf-8", newline="\n")
     (package / ".dockerignore").write_text("*\n!Dockerfile.runtime\n!build/\n!build/libs/\n!build/libs/*-all.jar\n!docker/\n!docker/*.sh\n!docker/*.awk\n", encoding="ascii", newline="\n")
-    (package / "start-beta3.sh").write_text(r'''#!/bin/sh
-set -eu
-cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-case "$#:${1:-}" in
-  0:) ;;
-  1:--force-recreate) ;;
-  *) printf 'Usage: sh start-beta3.sh [--force-recreate]\n' >&2; exit 2 ;;
-esac
-docker info >/dev/null
-for other in ESurfingDialer ESurfingDialer-Beta ESurfingDialer-Beta2; do
-  running="$(docker inspect --format '{{.State.Running}}' "$other" 2>/dev/null || true)"
-  if [ "$running" = true ]; then
-    printf 'ERROR: %s is running. Stop it before starting ESurfingDialer-Beta3.\n' "$other" >&2
-    exit 1
-  fi
-done
-docker compose --project-name esurfing-dialer-beta3 up -d "$@" --no-build --pull never
-''', encoding="utf-8", newline="\n")
+    (package / "start-beta3.sh").write_text(startup_script(PROJECT, CONTAINER, "start-beta3.sh"), encoding="utf-8", newline="\n")
     (package / "scripts").mkdir()
     (package / "docker").mkdir()
     for runtime_file in (source / "docker").iterdir():

@@ -78,13 +78,27 @@ class Client(
                     authorization(AuthorizationTrigger.PORTAL)
                     continue
                 }
-                if (session != null && HealthStatus.authenticated && ReauthPlanner.shouldTriggerScheduledReauth()) {
+                val scheduledCandidate = if (context != null) attemptedPortal else States.portalCandidate
+                val hasScheduledContext = context != null || !scheduledCandidate.portalUrl.isNullOrBlank() ||
+                    !scheduledCandidate.portalBody.isNullOrBlank() ||
+                    (PortalConfiguration.isIpv4(scheduledCandidate.userIp) && PortalConfiguration.isIpv4(scheduledCandidate.acIp))
+                if ((HealthStatus.authenticated || HealthStatus.networkReachable) && hasScheduledContext &&
+                    ReauthPlanner.shouldTriggerScheduledReauth()) {
                     logger.info(
                         "SCHEDULED_REAUTH_TRIGGERED nextAt=${ReauthPlanner.formatEpoch(ReauthPlanner.snapshot().nextPlannedReauthAt)} " +
                             "window=${ReauthPlanner.safeWindowLabel()}"
                     )
+                    States.requestAuthorization(scheduledCandidate, AuthorizationTrigger.SCHEDULED)
                     authorization(AuthorizationTrigger.SCHEDULED)
                     continue
+                }
+
+                if (HealthStatus.networkReachable && !hasScheduledContext && ReauthPlanner.isDue()) {
+                    val now = System.currentTimeMillis() / 1000L
+                    if (now - lastScheduledReauthLogAt >= 300) {
+                        lastScheduledReauthLogAt = now
+                        logger.info("DAILY_REAUTH_WAITING_FOR_PORTAL: 外网可达，但无本核心会话或安全门户上下文；等待门户发现，不猜测认证地址。")
+                    }
                 }
 
                 if (session != null && HealthStatus.authenticated && ReauthPlanner.shouldLogWaiting()) {
@@ -130,6 +144,7 @@ class Client(
                 }
 
                 if (States.networkStatus == SUCCESS || States.networkStatus == DEFAULT) {
+                    if (States.networkStatus == SUCCESS) HealthStatus.markClientProgress("network_online_unowned")
                     sleep(500)
                     continue
                 }
