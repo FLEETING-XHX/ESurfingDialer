@@ -37,7 +37,8 @@ container_state() {
   timeout 10 docker inspect -f '{{.State.Running}} {{.State.Paused}} {{.State.Restarting}} {{.HostConfig.RestartPolicy.Name}}' "$CONTAINER_NAME" 2>/dev/null || true
 }
 container_health_ok() {
-  health_json="$(timeout 10 docker exec "$CONTAINER_NAME" sh -c 'cat "${STATE_DIR:-/data}/health.json"' 2>/dev/null || true)"
+  health_json="$(timeout 10 docker exec "$CONTAINER_NAME" sh -c 'if [ -e "${CORE_STATE_CONFLICT_FILE:-/tmp/esurfing-core-state-conflict}" ]; then printf "%s\n" "__ESURFING_CORE_STATE_IN_USE__"; else cat "${STATE_DIR:-/data}/health.json"; fi' 2>/dev/null || true)"
+  [ "$health_json" != '__ESURFING_CORE_STATE_IN_USE__' ] || return 2
   [ -n "$health_json" ] && [ "${#health_json}" -le 32768 ] || return 1
   health_now="$(date +%s)"
   health_max_age="$HEALTH_MAX_AGE_SECONDS"
@@ -56,7 +57,7 @@ while true; do
   result=0
   container_health_ok || result="$?"
   if [ "$result" = 0 ] || [ "$result" = 2 ]; then
-    # Unknown schemas are not evidence of a hung process; don't recycle old clients.
+    # Unknown schemas and explicit ownership pauses are not evidence of a hang.
     fail_count=0
     sleep "$CHECK_INTERVAL_SECONDS"
     continue

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the v2.4 amd64 release archive from a verified released runtime and new JVM code.
+"""Build the v2.4.1 amd64 release archive from a verified released runtime and new JVM code.
 No daemon, registry push, credentials, or modification of the original image is needed.
 OCI layout reference: https://github.com/opencontainers/image-spec/blob/main/image-layout.md
 """
@@ -14,11 +14,12 @@ import subprocess
 from pathlib import Path
 import tarfile
 import zipfile
+from deployment_config import set_version, startup_script
 
 BASE_SHA256 = "93bca5389a75eb997f1aec0d0316f433401e758129f01d7fa862ffb2bb9fb5fd"
-VERSION = "v2.4"
-CONTAINER = "ESurfingDialer-v2.4"
-PROJECT = "esurfing-dialer-v24"
+VERSION = "v2.4.1"
+CONTAINER = "ESurfingDialer-v2.4.1"
+PROJECT = "esurfing-dialer-v241"
 TAG = "esurfing-dialer:" + VERSION
 NAME = "ESurfingDialer-Docker-" + VERSION
 
@@ -74,7 +75,7 @@ def image(base, jar, source, output, build_id):
         descriptors.append({"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": new_digest, "size": len(new_layer)})
         config["rootfs"]["diff_ids"].append(new_digest)
         config["created"] = now
-        config.setdefault("history", []).append({"created": now, "created_by": "Release v2.4: verified v1.3 runtime + updated client.jar and updated runtime scripts"})
+        config.setdefault("history", []).append({"created": now, "created_by": "Release v2.4.1: verified v1.3 runtime + updated client.jar and updated runtime scripts"})
         config["config"].setdefault("Labels", {}).update({"org.opencontainers.image.version": VERSION, "esurfing.release.channel": "stable", "esurfing.base.sha256": BASE_SHA256,
             "esurfing.build.id": build_id, "esurfing.jar.sha256": digest(jar.read_bytes())})
         config_data = serialized(config)
@@ -139,8 +140,7 @@ def main():
     verify_image(image_path, args.jar)
     for name in [".env.example", "docker-compose.yml", "install.sh", "LICENSE", "CHANGELOG.md"]:
         text = (source / name).read_text(encoding="utf-8")
-        if name != "CHANGELOG.md":
-            text = text.replace("v1.3", VERSION)
+        text = set_version(name, text, VERSION, TAG)
         if name == "docker-compose.yml":
             text = "name: " + PROJECT + "\n" + text.replace("container_name: ESurfingDialer", "container_name: " + CONTAINER)
         if name == "install.sh":
@@ -151,7 +151,7 @@ def main():
             text = text.replace('command -v docker', 'cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\n\ncommand -v docker', 1)
             # Never operate on a same-named container belonging to another deployment.
             anchor = 'free_kb="$(df'
-            preflight = 'if docker inspect ' + CONTAINER + ' >/dev/null 2>&1; then\n  fail "' + CONTAINER + ' already exists. Use the v2.4 directory and explicit Compose commands to update it."\nfi\n\n'
+            preflight = 'if docker inspect ' + CONTAINER + ' >/dev/null 2>&1; then\n  fail "' + CONTAINER + ' already exists. Use the v2.4.1 directory and explicit Compose commands to update it."\nfi\n\n'
             text = text.replace(anchor, preflight + anchor, 1)
             # Deploy alongside stable, but leave authentication explicitly stopped.
             text = text.replace("Starting " + CONTAINER + " with local image only.", "Creating " + CONTAINER + " without starting it. Run sh start.sh when ready.")
@@ -166,24 +166,7 @@ def main():
     (package / "docker-compose.build.yml").write_text(
         "services:\n  esurfing-dialer:\n    build:\n      context: .\n      dockerfile: Dockerfile.runtime\n", encoding="utf-8", newline="\n")
     (package / ".dockerignore").write_text("*\n!Dockerfile.runtime\n!build/\n!build/libs/\n!build/libs/*-all.jar\n!docker/\n!docker/*.sh\n!docker/*.awk\n", encoding="ascii", newline="\n")
-    (package / "start.sh").write_text(r'''#!/bin/sh
-set -eu
-cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-case "$#:${1:-}" in
-  0:) ;;
-  1:--force-recreate) ;;
-  *) printf 'Usage: sh start.sh [--force-recreate]\n' >&2; exit 2 ;;
-esac
-docker info >/dev/null
-for other in ESurfingDialer ESurfingDialer-Beta ESurfingDialer-Beta2 ESurfingDialer-Beta3; do
-  running="$(docker inspect --format '{{.State.Running}}' "$other" 2>/dev/null || true)"
-  if [ "$running" = true ]; then
-    printf 'ERROR: %s is running. Stop it before starting ESurfingDialer-v2.4.\n' "$other" >&2
-    exit 1
-  fi
-done
-docker compose --project-name esurfing-dialer-v24 up -d "$@" --no-build --pull never
-''', encoding="utf-8", newline="\n")
+    (package / "start.sh").write_text(startup_script(PROJECT, CONTAINER, "start.sh"), encoding="utf-8", newline="\n")
     (package / "scripts").mkdir()
     (package / "docker").mkdir()
     for runtime_file in (source / "docker").iterdir():

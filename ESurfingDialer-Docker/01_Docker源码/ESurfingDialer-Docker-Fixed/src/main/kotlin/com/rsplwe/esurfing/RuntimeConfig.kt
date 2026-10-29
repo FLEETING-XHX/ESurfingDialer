@@ -17,8 +17,9 @@ object RuntimeConfig {
     val healthAuthMaxAgeSeconds: Long = envLong("HEALTH_AUTH_MAX_AGE_SECONDS", 900, 30, 7200)
     val maxRecoveriesBeforeExit: Int = envInt("MAX_RECOVERIES_BEFORE_EXIT", 30, 3, 1000)
     val autoReauthEnabled: Boolean = envInt("AUTO_REAUTH_ENABLED", 1, 0, 1) == 1
-    val autoReauthSafeWindowStartHour: Int = envInt("AUTO_REAUTH_SAFE_WINDOW_START_HOUR", 4, 0, 23)
-    val autoReauthSafeWindowEndHour: Int = envInt("AUTO_REAUTH_SAFE_WINDOW_END_HOUR", 6, 0, 24)
+    val autoReauthSafeWindowStartHour: Int = windowHour("AUTO_REAUTH_SAFE_WINDOW_START_HOUR", 4, 23)
+    val autoReauthSafeWindowEndHour: Int = windowHour("AUTO_REAUTH_SAFE_WINDOW_END_HOUR", 6, 24)
+        .also { require(it >= autoReauthSafeWindowStartHour) { "AUTO_REAUTH_SAFE_WINDOW_END_HOUR不能早于起始时间" } }
 
     val networkProbeBudgetSeconds: Long = envLong("NETWORK_PROBE_BUDGET_SECONDS", 60, 1, 180)
 
@@ -43,5 +44,11 @@ object RuntimeConfig {
 
     private fun envInt(name: String, defaultValue: Int, min: Int, max: Int): Int {
         return env(name, defaultValue.toString()).toIntOrNull()?.coerceIn(min, max) ?: defaultValue
+    }
+
+    private fun windowHour(name: String, default: Int, maximum: Int): Int {
+        val value = env(name, default.toString()).toIntOrNull()
+        require(value != null && value in 0..maximum) { "${name}时间无效" }
+        return value
     }
 }

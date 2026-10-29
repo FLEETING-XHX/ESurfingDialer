@@ -12,6 +12,7 @@ object HealthStatus {
     @Volatile var clientThreadAlive: Boolean = false
     @Volatile var networkCheckThreadAlive: Boolean = false
     @Volatile var authenticated: Boolean = false
+    @Volatile var networkReachable: Boolean = false
     @Volatile var lastNetworkCheckAt: Long = 0
     @Volatile var lastNetworkCheckCompletedAt: Long = 0
     @Volatile var lastNetworkCheckSuccessAt: Long = 0
@@ -72,6 +73,12 @@ object HealthStatus {
                 "clientThreadAlive" to clientThreadAlive,
                 "networkCheckThreadAlive" to networkCheckThreadAlive,
                 "authenticated" to authenticated,
+                "networkReachable" to networkReachable,
+                "connectionState" to when {
+                    authenticated -> "authenticated"
+                    networkReachable && currentProgress.stage in setOf("loop", "network_online_unowned") -> "network-online-unowned"
+                    else -> "authenticating"
+                },
                 "lastUpdatedAt" to now,
                 "lastNetworkCheckAt" to past(lastNetworkCheckAt),
                 "lastNetworkCheckCompletedAt" to past(lastNetworkCheckCompletedAt),
@@ -84,6 +91,9 @@ object HealthStatus {
                 "lastHeartbeatSuccessAt" to past(lastHeartbeatSuccessAt),
                 "lastPortalReauthRequestAt" to past(lastPortalReauthRequestAt),
                 "autoReauthEnabled" to planner.enabled,
+                "autoReauthMode" to planner.mode,
+                "autoReauthHandledDay" to planner.handledDay,
+                "autoReauthStateInvalid" to planner.stateInvalid,
                 "autoReauthEstimatedLifetimeSeconds" to planner.estimatedLifetimeSeconds,
                 "autoReauthLastAuthSuccessAt" to planner.lastAuthSuccessAt,
                 "autoReauthNextPlannedAt" to planner.nextPlannedReauthAt,
@@ -106,6 +116,7 @@ object HealthStatus {
     }
 
     fun markNetworkCheckSuccess() {
+        networkReachable = true
         markNetworkCheckObserved()
         lastNetworkCheckSuccessAt = now()
         consecutivePortalDetections.set(0)

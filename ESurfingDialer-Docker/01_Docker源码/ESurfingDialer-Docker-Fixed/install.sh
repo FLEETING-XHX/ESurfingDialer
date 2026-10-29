@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-VERSION="v1.3"
-IMAGE_NAME="esurfing-dialer:v1.3"
+VERSION="v2.4.1"
+IMAGE_NAME="esurfing-dialer:v2.4.1"
 
 info() {
   printf '%s\n' "$*"

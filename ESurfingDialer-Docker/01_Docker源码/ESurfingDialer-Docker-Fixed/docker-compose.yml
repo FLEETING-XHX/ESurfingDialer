@@ -1,6 +1,6 @@
 services:
   esurfing-dialer:
-    image: "${DIALER_IMAGE:-esurfing-dialer:v1.3}"
+    image: "${DIALER_IMAGE:-esurfing-dialer:v2.4.1}"
     container_name: ESurfingDialer
     network_mode: host
     restart: unless-stopped

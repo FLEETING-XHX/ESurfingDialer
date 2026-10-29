@@ -18,6 +18,9 @@ data class ReauthPlanSnapshot(
     val successfulAuthSamples: Int,
     val safeWindowStartHour: Int,
     val safeWindowEndHour: Int,
+    val mode: String = "daily",
+    val handledDay: Long = -1,
+    val stateInvalid: Boolean = false,
 )
 
 object ReauthPlanner {
@@ -44,6 +47,7 @@ object ReauthPlanner {
     fun recordAuthSuccess(trigger: AuthorizationTrigger, nowSeconds: Long = nowSeconds(), networkKey: String? = null) =
         engine.recordAuthSuccess(trigger, nowSeconds, networkKey)
     fun shouldTriggerScheduledReauth(nowSeconds: Long = nowSeconds()) = engine.shouldTrigger(nowSeconds)
+    fun isDue(nowSeconds: Long = nowSeconds()) = engine.isDue(nowSeconds)
     fun isWaitingForSafeWindow(nowSeconds: Long = nowSeconds()) = engine.isWaiting(nowSeconds)
     fun shouldLogWaiting(nowSeconds: Long = nowSeconds()) = isWaitingForSafeWindow(nowSeconds)
     fun snapshot() = engine.snapshot()
