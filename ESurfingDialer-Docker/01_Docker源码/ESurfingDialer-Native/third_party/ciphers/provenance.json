@@ -1,0 +1,198 @@
+{
+  "upstream": "https://github.com/BadGhost520/ESurfingClient-CVersion",
+  "commit": "f31a19d5c9440fae421df4e4277c4d350df3bf01",
+  "files": [
+    {
+      "source": "esurfingclient/app/src/cipher/algo/aes_cbc.c",
+      "output": "algo/aes_cbc.c",
+      "sha256": "21ef904b2bc8f1d6cf354034e33298ec9dc651568efcad01e15d1f406f8311f1"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/aes_common.c",
+      "output": "algo/aes_common.c",
+      "sha256": "a75bf0f1d0611c03cb0a9914c6180afc90b6afe496ed680a8df1003bd30da5b5"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/aes_common.h",
+      "output": "algo/aes_common.h",
+      "sha256": "a09f8c494c9f1fba5022010d7b11946543780adf379401b7cb7eff6249c70dda"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/aes_double_cbc.c",
+      "output": "algo/aes_double_cbc.c",
+      "sha256": "0bbf5bfcffd9ab66a327bbe0b58aa2da6000715ec97deac212d5bb51aa13da1c"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/aes_double_ecb.c",
+      "output": "algo/aes_double_ecb.c",
+      "sha256": "f778269adb1c10a915c580534d04eb45d8233f2025c729c9b4832330cceffebc"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/aes_ecb.c",
+      "output": "algo/aes_ecb.c",
+      "sha256": "163e9736496b7a52a032254cf0f68bbb629b3863b563a5b76a54c6fec7279b66"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/des_ecb_six_keys.c",
+      "output": "algo/des_ecb_six_keys.c",
+      "sha256": "fd256d350dd43ecbcf3beee623bedbb79e1626a446c100e94f505d7b7e08f731"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/des_ecb_six.c",
+      "output": "algo/des_ecb_six.c",
+      "sha256": "30fc84cdde4d79d34d675fb6e3be04d580dbaa970206770d7edeafbc5ce0d0b3"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/desede_cbc.c",
+      "output": "algo/desede_cbc.c",
+      "sha256": "c9dd367309d7c94349d22d03c5c37bad61db370c40980be7f9be988ec8633991"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/desede_double_cbc.c",
+      "output": "algo/desede_double_cbc.c",
+      "sha256": "530d22f1728d607050306ca0f49ac950c4e114fb94b98876861ff545bcc932a1"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/desede_ecb.c",
+      "output": "algo/desede_ecb.c",
+      "sha256": "6045cd29951ef556693c7da9abaad51658ad6505932645509af2071778e98ba4"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/mod_xtea_cbc_triple.c",
+      "output": "algo/mod_xtea_cbc_triple.c",
+      "sha256": "770ec781ad3ab88e194aa2200ae1139aa273d24aa06df18c9490e94276cf17d0"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/mod_xtea_iv.c",
+      "output": "algo/mod_xtea_iv.c",
+      "sha256": "37555540b299e309f416bcdf4e9606d1c5f744e3a555069b0be1ca2ec7df9f19"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/mod_xtea.c",
+      "output": "algo/mod_xtea.c",
+      "sha256": "e2eb67359d42174da0cbe1f6facbd619a332985b651b3a8779cf9a149378a703"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/sm4_cbc.c",
+      "output": "algo/sm4_cbc.c",
+      "sha256": "23ad5c7ac2d70129efe7cb2dcef27b50d394a5806ff94628dcdbb2d8200f129d"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/sm4_common.c",
+      "output": "algo/sm4_common.c",
+      "sha256": "810b5674599beeed445e8a041f14bb3b6b0fa566e3c2e30a2346a1af3ddb30d5",
+      "local_sha256": "9cd4b9b45c4a251557c0e6dbc7523459136eececdd33b8012266e12851cf951f",
+      "local_change": "仅将整数提升后的有符号左移改为显式uint32_t左移；475条修改前合成向量全等"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/sm4_common.h",
+      "output": "algo/sm4_common.h",
+      "sha256": "01a667df271d8118483cfbaae1795a3220fd9516dc5519463fc0e1582a333868"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/sm4_ecb.c",
+      "output": "algo/sm4_ecb.c",
+      "sha256": "feef6568a73aa9b7982d91e60f65d7b8a066702fa3ec74ae0635c6bbcffa9ec7"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/sm4_variant_cbc.c",
+      "output": "algo/sm4_variant_cbc.c",
+      "sha256": "054436d9af5ab9b293da648ae4e0fb799a59c90c1abfee41f4a6c5fa109c742a"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/sm4_variant_ecb.c",
+      "output": "algo/sm4_variant_ecb.c",
+      "sha256": "6b6b6dbf8625466215a58eb9ea10053c3ec8cc52216fe453111a0f4035d2e118"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/snow3g_variant.c",
+      "output": "algo/snow3g_variant.c",
+      "sha256": "ac62b1b95d64a831a674dcc6ab3afad32e6dc5938e267b8b34bbb1bcdb3a1208",
+      "local_sha256": "ecaceb1b4e568b39e6f1f6a99a13acfe51a3e9e90d09565f25e46d074a40e10e",
+      "local_change": "仅将整数提升后的有符号左移改为显式uint32_t左移；475条修改前合成向量全等"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/tea_triple_cbc.c",
+      "output": "algo/tea_triple_cbc.c",
+      "sha256": "46e1bba654d3490e33be2507b66dbe541df984c75ceec2762dc387e226f60c28"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/tea_triple_ecb.c",
+      "output": "algo/tea_triple_ecb.c",
+      "sha256": "3534c39ad09b6215623ca56b191f0ec3a157f7b25e942219f5431ad6fa71247c"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/xtea_common.c",
+      "output": "algo/xtea_common.c",
+      "sha256": "faa51876dfa366304b035e5b732e4379454ea693224ca4eb5fd2ea5ff56d1996"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/xtea_common.h",
+      "output": "algo/xtea_common.h",
+      "sha256": "b785b11b9234d9930aae82c279525219037a9d1fbf1657ec0e4b529b70d2117d"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/algo/zuc.c",
+      "output": "algo/zuc.c",
+      "sha256": "364fdb0bed2074c909e7254d2c395e02334ac2e713d688780bba148e418946cd"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/CipherUtils.c",
+      "output": "CipherUtils.c",
+      "sha256": "e544ff42431b02adf1f0c97f2f101883e7f213cce6fd16dd5455f1d0301fd9be"
+    },
+    {
+      "source": "esurfingclient/app/src/cipher/KeyData.c",
+      "output": "KeyData.c",
+      "sha256": "1f80f5c8be916b68f07d83702076478aca21989bd1c8e39c736c77d7aa9ac73b"
+    },
+    {
+      "source": "esurfingclient/app/include/cipher/CipherInterface.h",
+      "output": "include/cipher/CipherInterface.h",
+      "sha256": "30ebdc7eb0d4bac7bd352c25b0a2092ce9b69006077a0022d4c990e19339e1a9"
+    },
+    {
+      "source": "esurfingclient/app/include/cipher/CipherUtils.h",
+      "output": "include/cipher/CipherUtils.h",
+      "sha256": "fec652e24aadb7a9a58e61ad8c1e06bfd5ed49ef54767a540e7fff9204e977bb"
+    },
+    {
+      "source": "esurfingclient/app/include/cipher/KeyData.h",
+      "output": "include/cipher/KeyData.h",
+      "sha256": "8fd6be8a138a55dd2cc2768e59ad31dafe72f4d21bec107c2056daa21429ad3f"
+    },
+    {
+      "source": "esurfingclient/app/src/utils/sim/SimEvpAes.c",
+      "output": "sim/SimEvpAes.c",
+      "sha256": "b3c5f1257552a520f6b101762259ee370c4aa0a5f2724cdf2e83788461cb8a75"
+    },
+    {
+      "source": "esurfingclient/app/src/utils/sim/SimEvpCipher.c",
+      "output": "sim/SimEvpCipher.c",
+      "sha256": "4ad4043b32f3dfbf69813293479b9615925fabb826907eb25d88b5e34b7b0be4"
+    },
+    {
+      "source": "esurfingclient/app/src/utils/sim/SimEvpDes3.c",
+      "output": "sim/SimEvpDes3.c",
+      "sha256": "58e96fb6408b361b7500fa59bc1b796c22a567ed42588464a26a80e8e003615a"
+    },
+    {
+      "source": "esurfingclient/app/src/utils/sim/SimEvpInternal.h",
+      "output": "sim/SimEvpInternal.h",
+      "sha256": "18a1e0072fcb95e7a721d30425cfd62b501fefa688513949bb03bf92a6ee4d32"
+    },
+    {
+      "source": "esurfingclient/app/src/utils/sim/SimEvpMd5.c",
+      "output": "sim/SimEvpMd5.c",
+      "sha256": "f1d36b1f3aff3c2112a7f56b3a118aa88af3127e32b6b114eb66349a02e6aa72"
+    },
+    {
+      "source": "esurfingclient/app/include/utils/sim/SimEvp.h",
+      "output": "include/utils/sim/SimEvp.h",
+      "sha256": "b6e2f164a6c7f8a96adc0133b3fa82cec84fd2dd02c08b566cc6ccd8d7af9acd"
+    }
+  ],
+  "adapted_factory_original_sha256": "4cde47bfd950d92d8bfafa70aefaf259a061948b9a8a1edb927db6e6bb73cc4c",
+  "adapted_factory_sha256": "c427e4c3c5068f42859c49cb7e848aa9810db0d341cc95bc3060cc5a7511a51e",
+  "changes": "保留独立工厂，重命名入口，移除应用全局状态和日志；仅SM4/SNOW3G修正已验证unsigned左移，逐文件保留原始sha256与local_sha256；其他算法及材料原样复制"
+}
