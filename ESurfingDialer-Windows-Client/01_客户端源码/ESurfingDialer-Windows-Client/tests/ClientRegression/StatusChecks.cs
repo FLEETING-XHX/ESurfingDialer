@@ -35,6 +35,21 @@ internal static partial class Program
             Refresh(); Expect("连接中");
             SetCore("_recovering", true); Refresh(); Expect("正在恢复");
             Check(ConnectionPresentation.For("正在恢复").Tray == TrayStatus.Connecting, "Recovery uses connecting tray state");
+            SetCore("_recovering", false);
+            health.ProcessInstanceId = "status-fixture";
+            health.AuthenticationBlocked = false; health.AuthenticationFailure = null;
+            health.NetworkReachable = true; health.LastNetworkSuccessAt = now.ToUnixTimeSeconds();
+            health.AuthenticationStage = "network-online-unowned";
+            health.ClientProgressAgeMillis = 0; health.ClientProgressTimeoutMillis = 90_000;
+            File.WriteAllText(AppPaths.HealthFile, JsonSerializer.Serialize(health));
+            Refresh(); Expect("网络已可用");
+            Check(!health.Authenticated && EnhancedConnectionPolicy.RecoverableFailureReason(health, now, now, "status-fixture") == null,
+                "Reachable unowned network is not falsely authenticated or restarted");
+            health.LastNetworkSuccessAt = now.AddMinutes(-2).ToUnixTimeSeconds();
+            Check(!health.IsOnlineWithoutSessionFor(now, now, TimeSpan.FromSeconds(40), "status-fixture"),
+                "Old probe success cannot sustain online-unowned presentation");
+            health.NetworkReachable = false;
+            File.WriteAllText(AppPaths.HealthFile, JsonSerializer.Serialize(health));
             SetCore("_recovering", false); SetWindow("_automaticRecoveryExhausted", true);
             Refresh(); Expect("恢复已暂停");
             typeof(MainWindow).GetMethod("CloseDetails_Click", flags)!.Invoke(window, new object[] { window, new System.Windows.RoutedEventArgs() });

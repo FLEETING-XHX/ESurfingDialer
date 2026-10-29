@@ -172,6 +172,24 @@
 <CheckBox x:Name="BackgroundTipsCheckBox" Canvas.Left="310.184" Canvas.Top="102.6025" Style="{StaticResource Switch}" Click="SettingsChanged_Click" AutomationProperties.Name="后台运行提示"/>
 </Canvas>
 </Border>
+<TextBlock Text="每日重登" Foreground="{StaticResource Muted}" FontSize="13" FontWeight="Bold" Height="19" Margin="0,0,0,7.22"/>
+<Border Style="{StaticResource Card}" BorderThickness="0" Margin="0,0,0,26.22" Padding="25,20">
+<StackPanel>
+<Grid Margin="0,0,0,10">
+<TextBlock Text="每天重新登录一次" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+<CheckBox x:Name="AutoReauthCheckBox" HorizontalAlignment="Right" Style="{StaticResource Switch}" Click="DailyReauthToggle_Click" AutomationProperties.Name="每天重新登录一次"/>
+</Grid>
+<TextBlock Text="UTC+8 · 默认 04:00～06:00，重登会短暂断网" FontSize="10" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+<Grid x:Name="DailyReauthTimeFields">
+<Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="14"/><ColumnDefinition/></Grid.ColumnDefinitions>
+<StackPanel><TextBlock Text="开始时间（整点）" FontSize="11"/><TextBox x:Name="ReauthStartTextBox" Margin="0,5,0,0" MaxLength="2" TextChanged="DailyReauthTime_TextChanged" AutomationProperties.Name="每日重登开始时间，00至23点" AutomationProperties.HelpText="结束时间不能早于开始时间"/></StackPanel>
+<StackPanel Grid.Column="2"><TextBlock Text="结束时间（整点）" FontSize="11"/><TextBox x:Name="ReauthEndTextBox" Margin="0,5,0,0" MaxLength="2" TextChanged="DailyReauthTime_TextChanged" AutomationProperties.Name="每日重登结束时间，00至24点" AutomationProperties.HelpText="结束时间不能早于开始时间"/></StackPanel>
+</Grid>
+<TextBlock x:Name="DailyReauthValidationText" Foreground="{StaticResource Coral}" FontSize="10" TextWrapping="Wrap" Margin="0,7,0,7" AutomationProperties.LiveSetting="Polite"/>
+<Button x:Name="SaveDailyReauthButton" Content="保存重登时间" Click="SaveDailyReauth_Click" HorizontalAlignment="Left" Padding="12,7" AutomationProperties.Name="保存每日重登时间"/>
+<TextBlock Text="窗口内启动可补执行；错过则等次日。起止相同按定点执行。" FontSize="10" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,9,0,0"/>
+</StackPanel>
+</Border>
 <TextBlock Text="其他" Foreground="{StaticResource Muted}" FontSize="13" FontWeight="Bold" Height="19" Margin="0,0,0,7.22"/>
 <Border Style="{StaticResource Card}" BorderThickness="0" Height="250">
 <Canvas>

@@ -25,7 +25,9 @@ $runtimeSource = Join-Path $outputRoot "runtime"
 $resourceReadme = Join-Path $repoRoot "resources\README_TEST.txt"
 
 & (Join-Path $PSScriptRoot "Build-Core.ps1") -Jdk17 $Jdk17 -Jdk21 $Jdk21 -Offline:$Offline -Regression:$Regression
-$jars = @(Get-ChildItem -LiteralPath (Join-Path $coreDir "build\libs") -Filter "*-all.jar")
+$coreVersionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $coreDir 'build.gradle.kts') -Raw), '(?m)^version\s*=\s*"([^"]+)"')
+if (-not $coreVersionMatch.Success) { throw '无法确定当前认证核心版本。' }
+$jars = @(Get-ChildItem -LiteralPath (Join-Path $coreDir "build\libs") -Filter "*-$($coreVersionMatch.Groups[1].Value)-all.jar")
 if ($jars.Count -ne 1) { throw "认证核心 JAR 数量不是 1，无法确定应打包的文件。" }
 New-Item -ItemType Directory -Path $outputRoot | Out-Null
 & (Join-Path $PSScriptRoot "Build-Runtime.ps1") -Jdk21 $Jdk21 -OutputDirectory $runtimeSource

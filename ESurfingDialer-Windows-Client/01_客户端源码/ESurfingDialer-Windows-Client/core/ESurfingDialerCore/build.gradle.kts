@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.rsplwe.esurfing"
-version = "1.4.0"
+version = "2.4.1"
 
 repositories {
     maven(url = "https://maven.aliyun.com/repository/public")
@@ -40,6 +40,7 @@ tasks.register<JavaExec>("recoveryRegression") {
     mainClass.set("com.rsplwe.esurfing.RecoveryRegressionKt")
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
     environment("STATE_DIR", layout.buildDirectory.dir("regression-state").get().asFile.absolutePath)
+    environment("AUTO_REAUTH_ENABLED", "0")
 }
 
 tasks.register<JavaExec>("authenticationRegression") {
@@ -48,4 +49,5 @@ tasks.register<JavaExec>("authenticationRegression") {
     mainClass.set("com.rsplwe.esurfing.AuthenticationRegressionKt")
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
     environment("STATE_DIR", layout.buildDirectory.dir("authentication-regression-state").get().asFile.absolutePath)
+    environment("AUTO_REAUTH_ENABLED", "0")
 }

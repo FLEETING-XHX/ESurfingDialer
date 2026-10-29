@@ -73,6 +73,7 @@ class Client(private val options: Options,
     }
 
     private fun runClientIteration() {
+        maybeRequestDailyReauth()
         val pending = States.authorizationRequest()
         if (HealthStatus.authenticationBlocked) {
             if (pending != null && portalIdentity(pending.portal) != portalIdentity(attemptedPortal)) {
@@ -89,9 +90,24 @@ class Client(private val options: Options,
         } else if (session != null && HealthStatus.authenticated) {
             val remaining = heartbeatDueNanos - System.nanoTime()
             if (remaining <= 0) maybeHeartbeat()
-            else CoreSignals.waitForClient(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1))
+            else CoreSignals.waitForClient(minOf(5_000, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1)))
         } else {
+            HealthStatus.markUnownedNetworkWait()
             CoreSignals.waitForClient(RuntimeConfig.networkCheckIntervalSeconds * 1000)
+        }
+    }
+
+    private fun maybeRequestDailyReauth() {
+        if (!States.isRunning || States.authorizationRequest() != null || HealthStatus.authenticationBlocked || !DailyReauthPlanner.isDue()) return
+        if (!HealthStatus.authenticated && !HealthStatus.networkReachable) return
+        // Do not invent portal/IP data or terminate a session this process does not own.
+        val candidate = if (HealthStatus.authenticated) attemptedPortal ?: States.portal else States.portal
+        if (candidate == null || (candidate.portalUrl == null && candidate.portalBody == null &&
+                !(PortalConfiguration.isIpv4(candidate.userIp.orEmpty()) && PortalConfiguration.isIpv4(candidate.acIp.orEmpty())))) {
+            DailyReauthPlanner.waitingForContext(); return
+        }
+        if (DailyReauthPlanner.request(candidate)) {
+            logger.info("DAILY_REAUTH_REQUESTED")
         }
     }
 
@@ -149,6 +165,7 @@ class Client(private val options: Options,
     private fun authorization(request: AuthorizationRequest) {
         ensureRunning()
         val authorizationRequest = request.version
+        if (!States.markAuthorizationStarted(authorizationRequest)) return
         if (session != null && HealthStatus.authenticated) {
             HealthStatus.authenticated = false
             HealthStatus.beginAuthenticationStage("terminate")
@@ -203,6 +220,7 @@ class Client(private val options: Options,
         }
         ensureRunning()
         if (!States.completeAuthorization(authorizationRequest, keepRetrySeconds)) throw InterruptedException("client stopped")
+        DailyReauthPlanner.recordAuthSuccess()
         authenticationRetryPolicy.reset()
         loginFailures = 0
         abnormalRecoveries = 0

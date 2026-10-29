@@ -16,7 +16,7 @@ $repository = [IO.Path]::GetFullPath((Join-Path $sourceRoot '../../..'))
 $version = [string]$project.Project.PropertyGroup.InformationalVersion
 $fileVersion = [string]$project.Project.PropertyGroup.FileVersion
 if ($Release) {
-    if ($version -notmatch '^[0-9]+\.[0-9]+$') { throw '正式交付入口需要主版本.次版本格式。' }
+    if ($version -notmatch '^[0-9]+\.[0-9]+(?:\.[0-9]+)?$') { throw '正式交付入口需要主版本.次版本或主版本.次版本.补丁格式。' }
 } elseif ($version -notmatch '^[0-9]+\.[0-9]+beta\.[0-9]+$') { throw '正式版本请使用 Build-Release.ps1。' }
 $runId = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
 $output = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else { Join-Path $sourceRoot "dist/v$version" }
@@ -88,6 +88,9 @@ try {
     Invoke-Logged $shell @('-NoProfile', '-File', (Join-Path $sourceRoot 'tests/ClientRegression/Test-StartupGateRegression.ps1'), '-OutputDirectory', (Join-Path $validation 'startup-gate-regression')) 'startup-gate-regression.log'
     $startupGate = Get-Content -LiteralPath (Join-Path $validation 'startup-gate-regression/result.json') -Raw | ConvertFrom-Json
     if (-not $startupGate.Passed -or $startupGate.Checks -lt 13) { throw '启动门禁自身回归未通过。' }
+    Invoke-Logged $shell @('-NoProfile', '-File', (Join-Path $sourceRoot 'tests/ClientRegression/Test-CoreJarSelection.ps1'), '-OutputDirectory', (Join-Path $validation 'core-jar-selection')) 'core-jar-selection.log'
+    $coreSelection = Get-Content -LiteralPath (Join-Path $validation 'core-jar-selection/result.json') -Raw | ConvertFrom-Json
+    if (-not $coreSelection.Passed -or $coreSelection.Checks -lt 6) { throw '核心版本选择回归未通过。' }
     $feed = Join-Path $validation 'cache-only-feed'
     if ($Offline) { New-Item -ItemType Directory -Path $feed | Out-Null }
     foreach ($restoreProject in @('app/ESurfingDialerLite/ESurfingDialerLite.csproj', 'tests/ClientRegression/ClientRegression.csproj')) {
@@ -143,7 +146,10 @@ try {
     }
     finally { $archive.Dispose() }
     if ($nativeHash -ne (Hash (Join-Path $sourceRoot 'core/ESurfingDialerCore/src/main/resources/libdaproxy.so'))) { throw '包内原生库与源码不一致。' }
-    if ((Hash (Join-Path $published 'core/client.jar')) -ne (Hash (Join-Path $sourceRoot 'core/ESurfingDialerCore/build/libs/ESurfingDialer-1.4.0-all.jar'))) { throw '交付核心不是本轮构建。' }
+    $coreVersionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $sourceRoot 'core/ESurfingDialerCore/build.gradle.kts') -Raw), '(?m)^version\s*=\s*"([^"]+)"')
+    if (-not $coreVersionMatch.Success) { throw '无法确定当前认证核心版本。' }
+    $currentJars = @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'core/ESurfingDialerCore/build/libs') -Filter "*-$($coreVersionMatch.Groups[1].Value)-all.jar")
+    if ($currentJars.Count -ne 1 -or (Hash (Join-Path $published 'core/client.jar')) -ne (Hash $currentJars[0].FullName)) { throw '交付核心不是本轮构建。' }
     $probe = Join-Path $validation 'package-probe'
     Invoke-Logged 'dotnet' @('publish', 'tests/ClientRegression/ClientRegression.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--no-restore', '-o', $probe) 'publish-harness.log'
     Copy-Item -Path (Join-Path $published '*') -Destination $probe -Recurse -Force

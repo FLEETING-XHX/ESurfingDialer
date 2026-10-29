@@ -11,6 +11,7 @@ import kotlin.system.exitProcess
 object DialerApp {
 
     private val logger: Logger = Logger.getLogger(DialerApp::class.java)
+    private var stateOwnership: CoreStateOwnership? = null
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -51,6 +52,18 @@ object DialerApp {
         // root directory
         if (!States.rootDir.exists()) States.rootDir.mkdirs()
         if (States.rootDir.isFile) throw IllegalArgumentException("rootDir must be directory: " + States.rootDir)
+        val ownership = CoreStateOwnership.acquire(States.rootDir)
+        if (ownership == null) {
+            System.err.println("CORE_STATE_IN_USE")
+            exitProcess(73)
+        }
+        stateOwnership = ownership
+        try { DailyReauthPlanner.snapshot() }
+        catch (error: IllegalArgumentException) {
+            ownership.close()
+            System.err.println("DAILY_REAUTH_TIME_INVALID: 结束时间不能早于起始时间")
+            exitProcess(1)
+        }
 
         States.useDynarmic = cmd.hasOption("dynarmic")
         DeviceIdentityStore.loadIntoStates()
@@ -79,6 +92,7 @@ object DialerApp {
                     try {
                         val networkStatus = checkConnectivity()
                         val suspicious = networkStatus.status != ConnectivityStatus.SUCCESS
+                        if (suspicious) HealthStatus.markNetworkCheckNotReachable()
 
                         when (networkStatus.status) {
                             ConnectivityStatus.SUCCESS -> {
@@ -132,6 +146,7 @@ object DialerApp {
                         currentThread().interrupt()
                         break
                     } catch (e: Exception) {
+                        HealthStatus.markNetworkCheckNotReachable()
                         HealthStatus.markError("network monitor recovered: ${e.message}")
                         if (repeatedLogLimiter.shouldLog("network-monitor-exception"))
                             logger.error("NETWORK_MONITOR_RECOVERED", e)
@@ -177,20 +192,31 @@ object DialerApp {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
+                // stateOwnership is retained through terminal reporter writes; the OS releases it at process exit.
             }
         })
+
+        System.getenv("CORE_PARENT_PID")?.toLongOrNull()?.takeIf { it > 0 }?.let { pid ->
+            CoreParentMonitor.watch(pid) { exitProcess(0) }
+        }
 
         clientThread.start()
         networkCheck.start()
         if (cmd.hasOption("control-stdin")) {
             kotlin.concurrent.thread(name = "windows-control", isDaemon = true) {
-                while (true) {
-                    val command = readlnOrNull() ?: return@thread
-                    when (command.trim().lowercase()) {
-                        "stop" -> exitProcess(0)
+                WindowsControl.run(::readlnOrNull, { exitProcess(0) }) { command ->
+                    when (command) {
                         "enhanced on", "enhanced=1", "enhanced true" -> RuntimeConfig.setEnhancedConnection(true)
                         "enhanced off", "enhanced=0", "enhanced false" -> RuntimeConfig.setEnhancedConnection(false)
                         "network recheck" -> CoreSignals.requestNetworkRecheck()
+                        else -> {
+                            val fields = command.split(Regex("\\s+"))
+                            if (fields.size == 4 && fields[0] == "reauth" && fields[1] in setOf("on", "off")) {
+                                try {
+                                    DailyReauthPlanner.configure(fields[1] == "on", fields[2].toInt(), fields[3].toInt())
+                                } catch (_: IllegalArgumentException) { logger.warn("DAILY_REAUTH_TIME_INVALID") }
+                            }
+                        }
                     }
                 }
             }

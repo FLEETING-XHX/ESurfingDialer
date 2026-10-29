@@ -173,6 +173,8 @@ fun main() {
         resetApiConnections()
     }
     count += ClientRecoveryRegression.run()
+    count += DailyAndOwnershipRegression.run()
+    count += ReviewFixRegression.run()
     println("PASS: $count recovery checks")
     kotlin.system.exitProcess(0)
 }

@@ -2,6 +2,8 @@
 
 从 Windows 客户端源码目录运行，需要本机现有 .NET 10 SDK 和已还原依赖。测试使用输出目录下独立的 test-data 和合成账户，不使用真实账户，不修改系统自启。
 
+核心 JAR 选择门禁：`./tests/ClientRegression/Test-CoreJarSelection.ps1 -OutputDirectory ./artifacts/core-jar-selection`，输出目录需全新。6 项覆盖新旧 JAR 共存、当前缺失及正常唯一选择；只操作测试目录内的合成 JAR，不执行它们。已接入 Build-LocalBeta/Build-Release 公用门禁。
+
 普通界面、配置和进程边界回归：
 
 ```powershell

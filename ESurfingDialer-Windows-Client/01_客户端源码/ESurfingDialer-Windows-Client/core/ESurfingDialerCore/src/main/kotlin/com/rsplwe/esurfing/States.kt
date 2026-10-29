@@ -5,7 +5,7 @@ import com.rsplwe.esurfing.utils.NetworkConnectivityResult
 import java.io.File
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
-data class AuthorizationRequest(val version: Long, val portal: NetworkConnectivityResult)
+data class AuthorizationRequest(val version: Long, val portal: NetworkConnectivityResult, val scheduled: Boolean = false)
 
 /** Ignore page nonces, but keep endpoint and address changes distinct. Never log this key. */
 internal fun portalIdentity(portal: NetworkConnectivityResult?): String {
@@ -43,16 +43,17 @@ object States {
     val authorizationRequestVersion: Long @Synchronized get() = requestedAuthorization
     val forceAuthorization: Boolean @Synchronized get() = isRunning && pendingAuthorization != null
 
-    @Synchronized fun requestAuthorization(candidate: NetworkConnectivityResult): Boolean {
+    @Synchronized fun requestAuthorization(candidate: NetworkConnectivityResult, scheduled: Boolean = false): Boolean {
         if (!isRunning) return false
         if (candidate.portalUrl == null && candidate.portalBody == null
             && !(PortalConfiguration.isIpv4(candidate.userIp.orEmpty()) && PortalConfiguration.isIpv4(candidate.acIp.orEmpty()))) return false
         val pending = pendingAuthorization
         if (pending != null && portalIdentity(pending.portal) == portalIdentity(candidate)) {
-            pendingAuthorization = pending.copy(portal = candidate)
+            // Ordinary portal recovery takes precedence over a cancellable daily plan.
+            pendingAuthorization = pending.copy(portal = candidate, scheduled = pending.scheduled && scheduled)
             return false
         }
-        pendingAuthorization = AuthorizationRequest(++requestedAuthorization, candidate)
+        pendingAuthorization = AuthorizationRequest(++requestedAuthorization, candidate, scheduled)
         CoreSignals.wakeClient()
         return true
     }
@@ -77,6 +78,14 @@ object States {
         if (forceAuthorization) CoreSignals.wakeClient()
     }
 
+    @Synchronized fun markAuthorizationStarted(version: Long): Boolean {
+        // Once started, any retry belongs to ordinary authentication recovery, not the scheduler switch.
+        val pending = pendingAuthorization
+        if (!isRunning || pending?.version != version) return false
+        pendingAuthorization = pending.copy(scheduled = false)
+        return true
+    }
+
     @Synchronized fun completeAuthorization(version: Long, heartbeatSeconds: Long): Boolean {
         if (!isRunning) return false
         HealthStatus.markLoginSuccess(heartbeatSeconds)
@@ -85,6 +94,10 @@ object States {
     }
 
     @Synchronized fun cancelAuthorization() { pendingAuthorization = null; CoreSignals.wakeClient() }
+
+    @Synchronized fun cancelScheduledAuthorization() {
+        if (pendingAuthorization?.scheduled == true) { pendingAuthorization = null; CoreSignals.wakeClient() }
+    }
 
     var useDynarmic = false
 

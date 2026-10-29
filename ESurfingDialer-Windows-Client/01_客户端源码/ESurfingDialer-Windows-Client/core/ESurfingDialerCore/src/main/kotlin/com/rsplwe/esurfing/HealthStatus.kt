@@ -33,6 +33,13 @@ object HealthStatus {
         requestWrite()
     }
 
+    fun markUnownedNetworkWait() {
+        if (!authenticated && networkReachable) {
+            authenticationProgress = AuthenticationProgress("network-online-unowned", now(), System.nanoTime(), 90_000)
+            requestWrite()
+        }
+    }
+
     internal fun progressAgeMillis(): Long = authenticationProgress?.let {
         TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - it.startedNanos).coerceAtLeast(0)
     } ?: -1
@@ -46,6 +53,8 @@ object HealthStatus {
     @Volatile var networkCheckThreadAlive: Boolean = false
     @Volatile var authenticated: Boolean = false
     @Volatile var lastNetworkCheckAt: Long = 0
+    @Volatile var networkReachable: Boolean = false
+    @Volatile var lastNetworkSuccessAt: Long = 0
     @Volatile var lastLoginSuccessAt: Long = 0
     @Volatile var lastHeartbeatSuccessAt: Long = 0
     @Volatile var lastError: String? = null
@@ -89,6 +98,7 @@ object HealthStatus {
     }
 
     @Synchronized fun write() {
+        var temporary: java.nio.file.Path? = null
         try {
             val now = now()
             val progress = authenticationProgress
@@ -100,14 +110,17 @@ object HealthStatus {
                     else -> listOf(c)
                 }
             }?.joinToString("")
-            val temporary = File(States.rootDir, "health.json.tmp")
-            temporary.writeText(
+            val plan = DailyReauthPlanner.snapshot()
+            temporary = Files.createTempFile(States.rootDir.toPath(), ".health-", ".tmp")
+            temporary.toFile().writeText(
                 """
                 {
                   "processAlive": ${States.isRunning},
                   "processInstanceId": "$processInstanceId",
                   "clientThreadAlive": $clientThreadAlive,
                   "networkCheckThreadAlive": $networkCheckThreadAlive,
+                  "networkReachable": $networkReachable,
+                  "lastNetworkSuccessAt": $lastNetworkSuccessAt,
                   "authenticated": $authenticated,
                   "authenticationFailure": ${authenticationFailure?.let { "\"$it\"" } ?: "null"},
                   "authenticationFailureDeterministic": $authenticationFailureDeterministic,
@@ -119,6 +132,11 @@ object HealthStatus {
                   "enhancedConnection": ${RuntimeConfig.isEnhancedConnectionEnabled()},
                   "networkCheckIntervalSeconds": ${RuntimeConfig.networkCheckIntervalSeconds},
                   "healthWriteIntervalSeconds": ${RuntimeConfig.healthWriteIntervalSeconds},
+                  "autoReauthEnabled": ${plan.enabled},
+                  "autoReauthSafeWindowStartHour": ${plan.startHour},
+                  "autoReauthSafeWindowEndHour": ${plan.endHour},
+                  "autoReauthNextPlannedAt": ${plan.nextAt},
+                  "autoReauthStatus": "${plan.status}",
                   "lastUpdatedAt": $now,
                   "lastNetworkCheckAt": $lastNetworkCheckAt,
                   "lastLoginSuccessAt": $lastLoginSuccessAt,
@@ -128,21 +146,30 @@ object HealthStatus {
                 }
                 """.trimIndent() + "\n"
             )
-            val target = File(States.rootDir, "health.json").toPath()
+            val target = File(States.rootDir, RuntimeConfig.healthFileName).toPath()
             try {
-                Files.move(temporary.toPath(), target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(temporary.toPath(), target, StandardCopyOption.REPLACE_EXISTING)
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
             }
         } catch (e: Exception) {
             logger.warn("Failed to write health status: ${e.message}")
-        }
+        } finally { temporary?.let { runCatching { Files.deleteIfExists(it) } } }
     }
 
     fun markNetworkCheckSuccess() {
         networkCheckThreadAlive = true
         lastNetworkCheckAt = now()
+        lastNetworkSuccessAt = lastNetworkCheckAt
+        networkReachable = true
         consecutivePortalDetections.set(0)
+        requestWrite()
+    }
+
+    fun markNetworkCheckNotReachable() {
+        lastNetworkCheckAt = now()
+        networkReachable = false
+        requestWrite()
     }
 
     fun markLoginSuccess(heartbeatSeconds: Long = RuntimeConfig.heartbeatIntervalMaxSeconds) {

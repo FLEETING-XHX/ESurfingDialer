@@ -31,7 +31,7 @@ public static class LogExporter
                 var config = new ConfigStore().Load();
                 using var settings = new StreamWriter(zip.CreateEntry("settings.json").Open());
                 settings.Write(JsonSerializer.Serialize(new { config.AutoStart, config.StartMinimized, config.AutoConnect,
-                    config.EnhancedConnection, AccountCount = config.Accounts.Count,
+                    config.EnhancedConnection, config.AutoReauthEnabled, config.ReauthStartHour, config.ReauthEndHour, AccountCount = config.Accounts.Count,
                     ClientVersion = typeof(LogExporter).Assembly.GetName().Version?.ToString() }, new JsonSerializerOptions { WriteIndented = true }));
             }
             File.Move(temporary, target, overwrite: true);

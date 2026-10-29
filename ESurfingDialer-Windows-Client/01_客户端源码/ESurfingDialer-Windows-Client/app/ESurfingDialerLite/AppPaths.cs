@@ -15,7 +15,15 @@ public static class AppPaths
 
     public static string ConfigFile { get; } = Path.Combine(AppDataDirectory, "config.json");
 
-    public static string HealthFile { get; } = Path.Combine(DataDirectory, "health.json");
+    private static string _healthFile = Path.Combine(DataDirectory, "health.json");
+    public static string HealthFile => Volatile.Read(ref _healthFile);
+
+    // Identity/configuration remain shared; only this supervised process may publish its health.
+    internal static void UseHealthInstance(string instanceId)
+    {
+        if (!Guid.TryParseExact(instanceId, "D", out _)) throw new ArgumentException("核心实例标识无效。", nameof(instanceId));
+        Volatile.Write(ref _healthFile, Path.Combine(DataDirectory, $"health-{instanceId}.json"));
+    }
 
     public static string CoreJar { get; } = Path.Combine(AppContext.BaseDirectory, "core", "client.jar");
 

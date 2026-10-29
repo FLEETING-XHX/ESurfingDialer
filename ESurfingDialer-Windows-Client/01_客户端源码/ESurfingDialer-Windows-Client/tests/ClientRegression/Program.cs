@@ -136,6 +136,7 @@ internal static partial class Program
 
     private static void Run(string[] args)
     {
+        if (RunProcessOwnershipFixture(args)) return;
         if (args.Contains("--idle")) { Console.ReadLine(); return; }
         if (args.Length == 2 && args[0] == "--instance")
         {
@@ -243,7 +244,7 @@ internal static partial class Program
             "Stage lease never hides a dead authentication thread");
         healthySnapshot.ClientThreadAlive = true;
         healthySnapshot.LastUpdatedAt = now.AddMinutes(-1).ToUnixTimeSeconds();
-        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) == "健康状态缺失或已过期",
+        Check(EnhancedConnectionPolicy.RecoverableFailureReason(healthySnapshot, now.AddMinutes(-2), now) == "健康状态已过期",
             "Stage lease never hides an expired health snapshot");
         healthySnapshot.LastUpdatedAt = now.ToUnixTimeSeconds();
         healthySnapshot.AuthenticationStage = null;
@@ -436,6 +437,7 @@ internal static partial class Program
             WindowHealthChecks(window);
             PasswordChecks(window);
             StatusChecks(window, output);
+            DailySettingsChecks(window, output);
             AccountFailureChecks(window);
             HarnessChecks(output);
             ProcessBoundaryChecks();
@@ -541,8 +543,12 @@ internal static partial class Program
             Check(Count("_consecutiveUnhealthyChecks") >= 5, "Other process health cannot reset recovery budget");
             health.ProcessInstanceId = "ui-fixture";
             Refresh();
-            Check(Count("_consecutiveUnhealthyChecks") == 0 && Count("_automaticRecoveryAttempts") == 0,
-                "Genuine healthy confirmation resets anomaly and recovery budgets");
+            Check(Count("_consecutiveUnhealthyChecks") == 0 && Count("_automaticRecoveryAttempts") == EnhancedConnectionPolicy.MaximumAutomaticRecoveries,
+                "One genuine health confirmation clears anomaly streak but preserves recovery budget");
+            typeof(MainWindow).GetField("_healthySince", flags)!.SetValue(window,
+                System.Diagnostics.Stopwatch.GetTimestamp() - (long)(System.Diagnostics.Stopwatch.Frequency * 121d));
+            Refresh();
+            Check(Count("_automaticRecoveryAttempts") == 0, "Sustained monotonic healthy window resets recovery budget");
         }
         finally { dialer.Stop(); }
     }

@@ -32,6 +32,10 @@ public partial class MainWindow : Window
     private bool _accountOperation;
     private bool _disposed;
     private bool _refreshingHealth;
+    private bool _applyingSettings;
+    private bool _dailyReauthApplied = true;
+    private long? _healthySince;
+    private string? _lastHealthDiagnostic;
     private string _secretFingerprint = "";
     private IInputElement? _previousFocus;
     private int _consecutiveUnhealthyChecks;
@@ -104,6 +108,9 @@ public partial class MainWindow : Window
 
     private void ApplySettings()
     {
+        _applyingSettings = true;
+        try
+        {
         AutoStartCheckBox.IsChecked = _config.AutoStart;
         StartMinimizedCheckBox.IsChecked = _config.StartMinimized;
         AutoConnectCheckBox.IsChecked = _config.AutoConnect;
@@ -113,6 +120,61 @@ public partial class MainWindow : Window
         MinimizeSettingRow.Visibility = _config.AutoStart ? Visibility.Visible : Visibility.Collapsed;
         _dialer.EnhancedConnection = _config.EnhancedConnection;
         _healthTimer.Interval = EnhancedConnectionPolicy.HealthCheckInterval(_config.EnhancedConnection);
+        AutoReauthCheckBox.IsChecked = _config.AutoReauthEnabled;
+        ReauthStartTextBox.Text = _config.ReauthStartHour.ToString("00");
+        ReauthEndTextBox.Text = _config.ReauthEndHour.ToString("00");
+        DailyReauthTimeFields.IsEnabled = SaveDailyReauthButton.IsEnabled = _config.AutoReauthEnabled;
+        DailyReauthValidationText.Text = "";
+        _dailyReauthApplied = _dialer.ConfigureDailyReauth(_config.AutoReauthEnabled, _config.ReauthStartHour, _config.ReauthEndHour);
+        }
+        finally { _applyingSettings = false; }
+    }
+
+    private void DailyReauthTime_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_applyingSettings || DailyReauthValidationText == null) return;
+        DailyReauthValidationText.Text = TryDailyReauthTimes(out _, out _, out var error) ? "修改后请保存重登时间。" : error;
+    }
+
+    private bool TryDailyReauthTimes(out int start, out int end, out string error)
+    {
+        start = end = 0;
+        if (!int.TryParse(ReauthStartTextBox.Text, out start) || !int.TryParse(ReauthEndTextBox.Text, out end))
+        { error = "请输入整点数字，例如开始 04、结束 06。"; return false; }
+        try { new ClientConfig { ReauthStartHour = start, ReauthEndHour = end }.ValidateDailyReauth(); }
+        catch (InvalidOperationException ex) { error = ex.Message; return false; }
+        error = ""; return true;
+    }
+
+    private void DailyReauthToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_applyingSettings) return;
+        var candidate = _config.Copy();
+        candidate.AutoReauthEnabled = AutoReauthCheckBox.IsChecked == true;
+        SaveDailyReauth(candidate);
+    }
+
+    private void SaveDailyReauth_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryDailyReauthTimes(out var start, out var end, out var error))
+        { DailyReauthValidationText.Text = error; ReauthEndTextBox.Focus(); return; }
+        var candidate = _config.Copy();
+        candidate.ReauthStartHour = start; candidate.ReauthEndHour = end;
+        SaveDailyReauth(candidate);
+    }
+
+    private void SaveDailyReauth(ClientConfig candidate)
+    {
+        try
+        {
+            candidate.ValidateDailyReauth(); _configStore.Save(candidate); _config = candidate; ApplySettings();
+            AppendLog(candidate.AutoReauthEnabled
+                ? $"每日重登已开启：UTC+8 {candidate.ReauthStartHour:00}:00～{candidate.ReauthEndHour:00}:00，每天一次。"
+                : "每日重登已关闭，普通断线恢复保持原设置。");
+            if (!_dailyReauthApplied) AppendLog("每日重登设置已保存，但核心控制通道不可用，将于下次连接生效。");
+            Notify(_dailyReauthApplied ? "每日重登设置已保存" : "已保存，将于下次连接生效");
+        }
+        catch (Exception ex) { ApplySettings(); DailyReauthValidationText.Text = "保存失败：" + ex.Message; }
     }
 
     private void SettingsChanged_Click(object sender, RoutedEventArgs e)
@@ -220,6 +282,9 @@ public partial class MainWindow : Window
         var now = DateTimeOffset.UtcNow;
         var usable = _dialer.IsRunning
             && health?.IsConnectedFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true;
+        var onlineUnowned = _dialer.IsRunning
+            && health?.IsOnlineWithoutSessionFor(_dialer.StartedAt, now, EnhancedConnectionPolicy.HealthSnapshotMaxAge(_config.EnhancedConnection), _dialer.InstanceId) == true;
+        if (!usable) _healthySince = null;
         HealthTextBlock.Text = _dialer.IsRunning
             ? health == null ? "核心运行中，等待健康状态。" : "核心状态：" + health.ToDisplayText()
             : "认证核心未运行。";
@@ -228,6 +293,16 @@ public partial class MainWindow : Window
             RecordHealthyConnection(now);
             UpdateStatus("已连接");
         }
+        else if (onlineUnowned)
+        {
+            if (_lossDetectedAt != null)
+                AppendLog("网络已恢复可用，当前没有本核心认证会话；停止累计预计断网时间。");
+            _lastHealthyAt = now; _lossDetectedAt = null; _recoveryStartedAt = null;
+            _consecutiveUnhealthyChecks = 0;
+            UpdateStatus("网络已可用");
+        }
+        else if (_dialer.CoreStateInUse)
+            UpdateStatus("核心被占用");
         else if (_automaticRecoveryExhausted || (_dialer.RecoveryExhausted && _currentStatus != "连接失败"))
             UpdateStatus("恢复已暂停");
         else if (_dialer.IsRecovering)
@@ -239,7 +314,7 @@ public partial class MainWindow : Window
             UpdateStatus(failed ? health!.AuthenticationBlocked ? "认证已暂停" : "连接失败"
                 : _recoveryStartedAt != null ? "正在恢复" : "连接中");
         }
-        else if (_currentStatus is "已连接" or "连接中" or "正在恢复" or "认证已暂停")
+        else if (_currentStatus is "已连接" or "网络已可用" or "连接中" or "正在恢复" or "认证已暂停" or "核心被占用")
             UpdateStatus("已断开");
 
         if (_config.EnhancedConnection && _dialer.IsRequested && _dialer.IsRunning
@@ -247,6 +322,9 @@ public partial class MainWindow : Window
             && !IsResumeRecoveryGraceActive())
         {
             var reason = EnhancedConnectionPolicy.RecoverableFailureReason(health, _dialer.StartedAt, now, _dialer.InstanceId);
+            if (reason != null && reason != _lastHealthDiagnostic)
+                AppendLog($"健康监督：实例={_dialer.InstanceId}，原因={reason}。");
+            _lastHealthDiagnostic = reason;
             if (reason == null) _consecutiveUnhealthyChecks = 0;
             else
             {
@@ -273,6 +351,7 @@ public partial class MainWindow : Window
 
     private void RecordConnectionLoss(DateTimeOffset now, string reason)
     {
+        _healthySince = null;
         if (_lossDetectedAt != null) return;
         _lossDetectedAt = now;
         var disconnectedAt = _lastHealthyAt ?? now;
@@ -295,8 +374,12 @@ public partial class MainWindow : Window
         _lossDetectedAt = null;
         _recoveryStartedAt = null;
         _consecutiveUnhealthyChecks = 0;
-        _automaticRecoveryAttempts = 0;
-        _automaticRecoveryExhausted = false;
+        _healthySince ??= Stopwatch.GetTimestamp();
+        if (Stopwatch.GetElapsedTime(_healthySince.Value) >= EnhancedConnectionPolicy.StableConnectionBeforeBudgetReset)
+        {
+            _automaticRecoveryAttempts = 0;
+            _automaticRecoveryExhausted = false;
+        }
     }
 
     private async Task TryEnhancedRecoveryAsync(DateTimeOffset now, string reason)
@@ -333,6 +416,8 @@ public partial class MainWindow : Window
 
     private void ResetEnhancedRecoveryState()
     {
+        _healthySince = null;
+        _lastHealthDiagnostic = null;
         _consecutiveUnhealthyChecks = 0;
         _automaticRecoveryAttempts = 0;
         _automaticRecoveryCount = 0;
@@ -353,12 +438,14 @@ public partial class MainWindow : Window
         var previous = _currentStatus;
         _currentStatus = status;
         CampusStatusText.Text = HomeStatusText.Text = status;
-        SpeedStatusText.Text = status == "已连接" ? "已连接" : status is "连接中" or "正在恢复" ? status : "等待连接";
+        SpeedStatusText.Text = status is "已连接" or "网络已可用" ? status : status is "连接中" or "正在恢复" ? status : "等待连接";
         var brush = Color(presentation.Tone);
         CampusStatusDot.Fill = brush;
         SignalBar1.Background = SignalBar2.Background = SignalBar3.Background = brush;
         (System.Windows.Application.Current as App)?.SetTrayStatus(presentation.Tray, "天翼校园：" + status + "。" + presentation.Detail);
         if (status == "已连接") AddSummary("认证成功", "校园网认证和心跳已确认。", "Green");
+        else if (status == "网络已可用") AddSummary(status, presentation.Detail, "Green");
+        else if (status == "核心被占用") AddSummary(status, presentation.Detail, "Coral");
         else if (status == "连接失败") AddSummary("连接失败", "请在设置中查看详细日志。", "Coral");
         else if (status == "连接中") AddSummary(previous == "已连接" ? "正在重新认证" : "正在连接", "正在检测校园网并验证当前账户。", "Coral");
         else if (status is "正在恢复" or "认证已暂停" or "恢复已暂停" or "用户已停止")

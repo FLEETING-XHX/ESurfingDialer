@@ -10,11 +10,16 @@ public sealed class DialerCoreProcess
     private readonly Action<Process> _terminateProcess;
     private readonly Func<int, TimeSpan>? _recoveryDelay;
     private Process? _process;
+    private CoreProcessJob? _processJob;
     private int _generation;
     private bool _requested;
     private bool _enhanced = true;
     private bool _recovering;
     private bool _recoveryExhausted;
+    private bool _coreStateInUse;
+    private bool _autoReauthEnabled = true;
+    private int _reauthStartHour = 4;
+    private int _reauthEndHour = 6;
     private int _crashStreak;
     private DateTimeOffset _startedAt;
     private string? _instanceId;
@@ -55,6 +60,7 @@ public sealed class DialerCoreProcess
     public bool IsRunning { get { lock (_gate) return _process is { HasExited: false }; } }
     public bool IsRecovering { get { lock (_gate) return _recovering; } }
     public bool RecoveryExhausted { get { lock (_gate) return _recoveryExhausted; } }
+    public bool CoreStateInUse { get { lock (_gate) return _coreStateInUse; } }
     public DateTimeOffset StartedAt { get { lock (_gate) return _startedAt; } }
     public string? InstanceId { get { lock (_gate) return _instanceId; } }
 
@@ -65,9 +71,11 @@ public sealed class DialerCoreProcess
             if (_requested) return Task.CompletedTask;
             if (_process is { HasExited: false }) throw new InvalidOperationException("旧认证核心尚未退出，请稍后再试。");
             ValidateCredentials(config.UserName, password);
+            ConfigureDailyReauth(config.AutoReauthEnabled, config.ReauthStartHour, config.ReauthEndHour);
             _requested = true;
             _crashStreak = 0;
             _recoveryExhausted = false;
+            _coreStateInUse = false;
             var generation = ++_generation;
             CancelPendingRecovery();
             _recoveryCancellation = new CancellationTokenSource();
@@ -83,6 +91,7 @@ public sealed class DialerCoreProcess
         {
             if (!_requested || !_enhanced || _recovering) return Task.FromResult(false);
             ValidateCredentials(config.UserName, password);
+            ConfigureDailyReauth(config.AutoReauthEnabled, config.ReauthStartHour, config.ReauthEndHour);
             // Unlike a manual stop, a health restart retains the user's connection intent.
             var generation = ++_generation;
             CancelPendingRecovery();
@@ -107,7 +116,6 @@ public sealed class DialerCoreProcess
     {
         Directory.CreateDirectory(AppPaths.LogsDirectory);
         Directory.CreateDirectory(AppPaths.DataDirectory);
-        if (File.Exists(AppPaths.HealthFile)) File.Delete(AppPaths.HealthFile);
         var info = new ProcessStartInfo
         {
             FileName = JavaLocator.FindJavaExe(), UseShellExecute = false,
@@ -117,9 +125,14 @@ public sealed class DialerCoreProcess
         foreach (var arg in new[] { "-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-Xms16m", "-jar", AppPaths.CoreJar, "-u", user, "-p", password, "-d", "--control-stdin" })
             info.ArgumentList.Add(arg);
         _instanceId = Guid.NewGuid().ToString();
+        AppPaths.UseHealthInstance(_instanceId);
         info.Environment["CORE_INSTANCE_ID"] = _instanceId;
+        info.Environment["CORE_PARENT_PID"] = Environment.ProcessId.ToString();
+        info.Environment["HEALTH_FILE_NAME"] = Path.GetFileName(AppPaths.HealthFile);
         info.Environment["STATE_DIR"] = AppPaths.DataDirectory;
-        info.Environment["AUTO_REAUTH_ENABLED"] = "0";
+        info.Environment["AUTO_REAUTH_ENABLED"] = _autoReauthEnabled ? "1" : "0";
+        info.Environment["AUTO_REAUTH_SAFE_WINDOW_START_HOUR"] = _reauthStartHour.ToString();
+        info.Environment["AUTO_REAUTH_SAFE_WINDOW_END_HOUR"] = _reauthEndHour.ToString();
         info.Environment["ENHANCED_CONNECTION_ENABLED"] = _enhanced ? "1" : "0";
         info.Environment["ENHANCED_NETWORK_CHECK_INTERVAL_SECONDS"] = EnhancedConnectionPolicy.EnhancedCoreNetworkCheckSeconds.ToString();
         info.Environment["CONSERVATIVE_NETWORK_CHECK_INTERVAL_SECONDS"] = EnhancedConnectionPolicy.ConservativeCoreNetworkCheckSeconds.ToString();
@@ -133,10 +146,13 @@ public sealed class DialerCoreProcess
         _startedAt = DateTimeOffset.UtcNow;
         try
         {
+            _processJob = new CoreProcessJob();
             _startProcess(process);
+            _processJob.Assign(process);
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             SafeLog(log, "认证核心已启动。");
+            SafeLog(log, $"认证核心归属：PID={process.Id}，实例={_instanceId}，健康文件={Path.GetFileName(AppPaths.HealthFile)}。");
         }
         catch (Exception startError)
         {
@@ -157,6 +173,7 @@ public sealed class DialerCoreProcess
                 throw new AggregateException("启动失败且核心尚未清理，请停止旧核心后再试。", startError, cleanupError);
             }
             _process = null;
+            ReleaseProcessJob();
             process.Dispose();
             throw;
         }
@@ -170,6 +187,7 @@ public sealed class DialerCoreProcess
             ++_generation;
             _recovering = false;
             _recoveryExhausted = false;
+            _coreStateInUse = false;
             CancelPendingRecovery();
             StopProcess();
         }
@@ -188,7 +206,29 @@ public sealed class DialerCoreProcess
                 throw new InvalidOperationException("认证核心仍在退出，请稍后再试。");
         }
         _process = null;
+        ReleaseProcessJob();
         process.Dispose();
+    }
+
+    private void ReleaseProcessJob()
+    {
+        _processJob?.Dispose();
+        _processJob = null;
+    }
+
+    public bool ConfigureDailyReauth(bool enabled, int startHour, int endHour)
+    {
+        if (startHour is < 0 or > 23 || endHour is < 0 or > 24 || endHour < startHour)
+            throw new ArgumentException("重新登录结束时间不能早于起始时间，且必须在当天时间范围内。");
+        lock (_gate)
+        {
+            _autoReauthEnabled = enabled;
+            _reauthStartHour = startHour;
+            _reauthEndHour = endHour;
+            if (_process is { HasExited: false } process)
+                return TrySendControl(process, $"reauth {(enabled ? "on" : "off")} {startHour} {endHour}");
+            return true; // No live process: the next launch receives these settings in its environment.
+        }
     }
 
     public bool RequestNetworkRecheck()
@@ -227,11 +267,24 @@ public sealed class DialerCoreProcess
         lock (_gate)
         {
             if (_generation != generation || _process != exited) return;
+            var stateInUse = exited.ExitCode == 73;
             if (DateTimeOffset.UtcNow - _startedAt > TimeSpan.FromMinutes(2)) _crashStreak = 0;
             _crashStreak++;
             _process = null;
+            ReleaseProcessJob();
             exited.Dispose();
             SafeLog(log, "认证核心已退出。");
+            if (stateInUse)
+            {
+                _coreStateInUse = true;
+                _requested = false;
+                _recovering = false;
+                _recoveryExhausted = true;
+                CancelPendingRecovery();
+                SafeLog(log, "认证核心状态目录已被占用，已暂停自动恢复，请退出旧客户端或旧核心后重新连接。");
+                PublishRecovery("认证核心已被其他实例占用，请退出旧客户端或旧核心后重新连接。");
+                return;
+            }
             if (!_requested || !_enhanced || _crashStreak > 5)
             {
                 _requested = false; _recovering = false; CancelPendingRecovery();

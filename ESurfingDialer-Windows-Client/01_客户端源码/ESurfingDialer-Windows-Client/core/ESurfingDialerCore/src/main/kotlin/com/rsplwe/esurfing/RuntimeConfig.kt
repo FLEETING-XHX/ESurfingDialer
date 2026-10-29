@@ -5,6 +5,14 @@ object RuntimeConfig {
     private var enhancedConnection: Boolean = envBoolean("ENHANCED_CONNECTION_ENABLED", true)
 
     val stateDir: String = env("STATE_DIR", "target")
+    val healthFileName: String = env("HEALTH_FILE_NAME", "health.json").also {
+        require(it.length <= 100 && Regex("health(?:-[A-Za-z0-9-]+)?\\.json").matches(it)) { "HEALTH_FILE_NAME_INVALID" }
+    }
+    val autoReauthEnabled: Boolean = envBoolean("AUTO_REAUTH_ENABLED", true)
+    val autoReauthStartHour: Int = env("AUTO_REAUTH_SAFE_WINDOW_START_HOUR", "4").toIntOrNull()
+        ?: throw IllegalArgumentException("DAILY_REAUTH_TIME_INVALID")
+    val autoReauthEndHour: Int = env("AUTO_REAUTH_SAFE_WINDOW_END_HOUR", "6").toIntOrNull()
+        ?: throw IllegalArgumentException("DAILY_REAUTH_TIME_INVALID")
     val loginRetryInitialSeconds: Long = envLong("LOGIN_RETRY_INITIAL_SECONDS", 5, 1, 600)
     val loginRetryMaxSeconds: Long = envLong("LOGIN_RETRY_MAX_SECONDS", 60, 5, 1800)
     val heartbeatFailureThreshold: Int = envInt("HEARTBEAT_FAILURE_THRESHOLD", 3, 1, 20)

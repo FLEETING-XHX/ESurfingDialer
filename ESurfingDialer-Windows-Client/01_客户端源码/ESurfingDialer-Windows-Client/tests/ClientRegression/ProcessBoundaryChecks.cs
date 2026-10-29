@@ -84,5 +84,6 @@ internal static partial class Program
             Check(!core.RecoveryExhausted, "Manual stop clears recovery failure state");
         }
         finally { core.Stop(); }
+        ProcessOwnershipChecks();
     }
 }

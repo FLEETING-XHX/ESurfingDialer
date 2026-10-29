@@ -15,6 +15,7 @@ public static class EnhancedConnectionPolicy
     public static readonly TimeSpan ResumeRecoveryGrace = TimeSpan.FromSeconds(20);
     public const int ConsecutiveUnhealthyChecksBeforeRecovery = 2;
     public const int MaximumAutomaticRecoveries = 3;
+    public static readonly TimeSpan StableConnectionBeforeBudgetReset = TimeSpan.FromMinutes(2);
 
     public static TimeSpan HealthCheckInterval(bool enhanced) =>
         enhanced ? EnhancedHealthCheckInterval : ConservativeHealthCheckInterval;
@@ -36,12 +37,15 @@ public static class EnhancedConnectionPolicy
 
     public static string? RecoverableFailureReason(HealthSnapshot? health, DateTimeOffset startedAt, DateTimeOffset now, string? expectedInstanceId = null)
     {
-        if (health == null || !health.IsCurrentFor(startedAt, now, EnhancedHealthSnapshotMaxAge, expectedInstanceId))
-            return "健康状态缺失或已过期";
+        if (health == null) return "健康状态缺失或无法读取";
+        var invalid = health.CurrentFailureReason(startedAt, now, EnhancedHealthSnapshotMaxAge, expectedInstanceId);
+        if (invalid != null) return invalid;
         if (!health.ClientThreadAlive)
             return "认证线程未运行";
         if (!health.NetworkCheckThreadAlive)
             return "网络检测线程未运行";
+        if (health.IsOnlineWithoutSessionFor(startedAt, now, EnhancedHealthSnapshotMaxAge, expectedInstanceId))
+            return null;
         if (health.Authenticated)
             return health.IsConnectedFor(startedAt, now, EnhancedHealthSnapshotMaxAge, expectedInstanceId)
                 ? null : "认证心跳进展已超时或无效";

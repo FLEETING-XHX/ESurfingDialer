@@ -22,6 +22,7 @@ public sealed class ConfigStore
             var json = File.ReadAllText(AppPaths.ConfigFile);
             var config = JsonSerializer.Deserialize<ClientConfig>(json, JsonOptions) ?? new ClientConfig();
             config.NormalizeAccounts();
+            config.ValidateDailyReauth();
             return config;
         }
         catch (Exception ex)
@@ -40,6 +41,7 @@ public sealed class ConfigStore
     internal PreparedConfigSave PrepareSave(ClientConfig config)
     {
         if (LoadError != null) throw new InvalidOperationException("原账户配置读取失败，已保留原文件。请先检查 config.json。");
+        config.ValidateDailyReauth();
         Directory.CreateDirectory(AppPaths.AppDataDirectory);
         config.SynchronizeSelectedAccount();
         var json = JsonSerializer.Serialize(config, JsonOptions);

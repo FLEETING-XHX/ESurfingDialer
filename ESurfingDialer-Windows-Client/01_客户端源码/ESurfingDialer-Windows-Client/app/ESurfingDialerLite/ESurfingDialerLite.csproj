@@ -12,12 +12,16 @@
     <!-- WPF owns the message loop; WinForms is used only for the tray icon. -->
     <!-- Keep the WPF DPI manifest and suppress only the WinForms-host warning. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
-    <Version>2.4.0</Version>
-    <InformationalVersion>2.4</InformationalVersion>
-    <AssemblyVersion>2.4.0.0</AssemblyVersion>
-    <FileVersion>2.4.0.0</FileVersion>
+    <Version>2.4.1</Version>
+    <InformationalVersion>2.4.1</InformationalVersion>
+    <AssemblyVersion>2.4.1.0</AssemblyVersion>
+    <FileVersion>2.4.1.0</FileVersion>
     <Product>ESurfingDialer Lite</Product>
     <ApplicationIcon>..\..\resources\icons\ESurfingDialer-default.ico</ApplicationIcon>
+    <CoreBuildFile>$(MSBuildThisFileDirectory)..\..\core\ESurfingDialerCore\build.gradle.kts</CoreBuildFile>
+    <CoreVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(CoreBuildFile)')), '(?m)^version\s*=\s*&quot;([^&quot;]+)&quot;').Groups[1].Value)</CoreVersion>
+    <CoreJarDirectory>$(MSBuildThisFileDirectory)..\..\core\ESurfingDialerCore\build\libs</CoreJarDirectory>
+    <CoreJarPath>$(CoreJarDirectory)\ESurfingDialer-$(CoreVersion)-all.jar</CoreJarPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,9 +30,12 @@
     <Content Include="Fonts\NotoSansSC-OFL.txt" Link="resources\fonts\NotoSansSC-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\resources\icons\*.ico" Link="resources\icons\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\resources\icons\LUCIDE-LICENSE.txt" Link="resources\icons\LUCIDE-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\core\ESurfingDialerCore\build\libs\*-all.jar"
-             Condition="Exists('..\..\core\ESurfingDialerCore\build\libs')"
+    <Content Include="$(CoreJarPath)"
              Link="core\client.jar" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <Target Name="ValidateCurrentCoreJar" BeforeTargets="PrepareForBuild;ComputeFilesToPublish">
+    <Error Condition="'$(CoreVersion)' == ''" Text="无法从 build.gradle.kts 确定认证核心版本。" />
+    <Error Condition="!Exists('$(CoreJarPath)')" Text="当前版本认证核心不存在：$(CoreJarPath)。请先运行 scripts/Build-Core.ps1。" />
+  </Target>
 </Project>

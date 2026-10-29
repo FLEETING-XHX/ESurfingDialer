@@ -43,6 +43,9 @@ finally {
     $env:Path = $previousPath
 }
 
-$jar = Get-ChildItem (Join-Path $coreDir "build\libs") -Filter "*-all.jar" | Select-Object -First 1
-if (-not $jar) { throw "Core jar was not generated." }
+$versionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $coreDir 'build.gradle.kts') -Raw), '(?m)^version\s*=\s*"([^"]+)"')
+if (-not $versionMatch.Success) { throw 'Cannot determine the current core version.' }
+$jars = @(Get-ChildItem (Join-Path $coreDir "build\libs") -Filter "*-$($versionMatch.Groups[1].Value)-all.jar")
+if ($jars.Count -ne 1) { throw "Exactly one current-version core jar must be generated." }
+$jar = $jars[0]
 Write-Host "Core jar: $($jar.FullName)"
