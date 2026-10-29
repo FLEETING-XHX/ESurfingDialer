@@ -1,0 +1,5 @@
+* text=auto eol=lf
+# Exact upstream/patched bytes are checked by provenance, including mixed endings.
+third_party/ciphers/** -text
+include/esurfing/cipher_registry.hpp -text
+tests/reference-vectors.tsv -text
