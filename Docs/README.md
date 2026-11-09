@@ -13,7 +13,7 @@
 | 文件 | 大致用途 |
 | --- | --- |
 | [源码 README](../Products/Docker/README.md) | 源码结构、配置、在线构建和维护说明 |
-| [图文部署教程](Docker/教程/ESurfingDialer-Docker部署教程.md) | WinSCP 上传、SSH 登录、v2.4 安装启动、迁移与常见问题 |
+| [Docker 新手安装教程](教程/Docker新手安装教程.md) | 各 Docker 版本共用，以 V3.0.0 为例介绍上传、安装、配置与启动 |
 | [历史 beta3 测试说明](Docker/教程/历史版本/Docker-beta3测试说明.md) | 旧 beta 独立部署、版本互斥与更新；也供历史打包器读取 |
 | [源码 CHANGELOG](../Products/Docker/CHANGELOG.md) | 打包器需要的简短入口，更新内容统一跳转总记录 |
 

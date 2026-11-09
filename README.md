@@ -26,7 +26,7 @@ v2.4 汇入认证通道、门户解析和连接恢复修复，更新界面、内
 
 [下载 Docker v2.4 离线部署包](https://github.com/FLEETING-XHX/ESurfingDialer/releases/download/v2.4/ESurfingDialer-Docker-v2.4.zip)
 
-[查看 Docker 软路由图文部署教程](Docs/Docker/教程/ESurfingDialer-Docker部署教程.md)
+[查看 Docker 软路由图文部署教程](Docs/教程/Docker新手安装教程.md)
 
 离线包包含镜像、安装脚本和配置模板，准备好文件后无需公网拉取镜像。解压后运行 `sh install.sh`，安装默认只创建容器；停止旧认证容器后运行 `sh start.sh`。
 
@@ -47,7 +47,7 @@ v2.4 汇入门户兼容、会话恢复、健康监督、日志限额与审查修
 | [修复与优化总记录](Docs/修复与优化总记录.md) | 按 Docker / Windows 查看历史改动与当前待办 |
 | [文档清单与用途](Docs/README.md) | 各产品与共用文档的入口 |
 | [Windows 使用说明](Docs/Windows/WINDOWS-USER-GUIDE.md) | 账户、连接、托盘、设置和故障排查 |
-| [Docker 软路由图文部署教程](Docs/Docker/教程/ESurfingDialer-Docker部署教程.md) | WinSCP 上传、SSH 登录、v2.4 离线安装、启动及迁移 |
+| [Docker 软路由图文部署教程](Docs/教程/Docker新手安装教程.md) | 以 V3.0.0 为例，介绍上传、安装、配置与启动；后续 Docker 版本共用 |
 
 ## 致谢
 
