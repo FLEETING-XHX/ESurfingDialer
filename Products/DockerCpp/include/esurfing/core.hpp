@@ -45,6 +45,7 @@ public:
     bool keep_confirmed(std::uint64_t generation, Seconds interval, Mono now);
     void failed(std::uint64_t generation, std::string code, Mono now, bool deterministic = false);
     bool heartbeat_due(Mono now) const;
+    Seconds retry_after(Mono now) const;
     void heartbeat_failed(std::uint64_t generation, Mono now, bool protocol_rejected=false);
     void tick(Mono now);
     void stop();

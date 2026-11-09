@@ -6,6 +6,11 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstdio>
 #endif
 
 namespace esurfing {
@@ -88,13 +93,38 @@ void write_state_file(const std::filesystem::path& path,std::string_view content
     std::random_device random;
     std::string suffix=".";suffix+=std::to_string(random());suffix+='.';suffix+=std::to_string(random());suffix+=".tmp";
     auto tmp=path;tmp+=suffix;
+#ifdef _WIN32
     try{
         std::ofstream out(tmp,std::ios::binary|std::ios::trunc);out.exceptions(std::ios::badbit|std::ios::failbit);out.write(contents.data(),static_cast<std::streamsize>(contents.size()));out.close();
-#ifdef _WIN32
+        auto handle=CreateFileW(tmp.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+        if(handle==INVALID_HANDLE_VALUE)throw std::runtime_error("STATE_SYNC_FAILED");
+        auto synced=FlushFileBuffers(handle);auto closed=CloseHandle(handle);
+        if(!synced||!closed)throw std::runtime_error("STATE_SYNC_FAILED");
         if(!MoveFileExW(tmp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("STATE_REPLACE_FAILED");
-#else
-        std::filesystem::rename(tmp,path);
-#endif
     }catch(...){std::error_code ec;std::filesystem::remove(tmp,ec);throw;}
+#else
+    int fd=-1,dir=-1;
+    try{
+        auto parent=path.parent_path();if(parent.empty())parent=".";
+        dir=::open(parent.c_str(),O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+        if(dir<0)throw std::runtime_error("STATE_SYNC_FAILED");
+        fd=::open(tmp.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
+        if(fd<0)throw std::runtime_error("STATE_REPLACE_FAILED");
+        std::size_t at=0;
+        while(at<contents.size()){
+            auto n=::write(fd,contents.data()+at,contents.size()-at);
+            if(n<0&&errno==EINTR)continue;
+            if(n<=0)throw std::runtime_error("STATE_REPLACE_FAILED");
+            at+=static_cast<std::size_t>(n);
+        }
+        auto sync=[](int handle){int rc;do{rc=::fsync(handle);}while(rc<0&&errno==EINTR);if(rc<0)throw std::runtime_error("STATE_SYNC_FAILED");};
+        sync(fd);
+        auto closing=fd;fd=-1;if(::close(closing))throw std::runtime_error("STATE_REPLACE_FAILED");
+        if(::rename(tmp.c_str(),path.c_str()))throw std::runtime_error("STATE_REPLACE_FAILED");
+        // Rename visibility is not directory durability. A failure here is still
+        // reported, even though the new value may already be visible to readers.
+        sync(dir);closing=dir;dir=-1;if(::close(closing))throw std::runtime_error("STATE_SYNC_FAILED");
+    }catch(...){if(fd>=0)::close(fd);if(dir>=0)::close(dir);std::error_code ec;std::filesystem::remove(tmp,ec);throw;}
+#endif
 }
 }

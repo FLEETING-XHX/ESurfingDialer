@@ -270,3 +270,16 @@ cipher_interface_t* create_zuc_cipher(const uint8_t* key, const uint8_t* iv)
     ci->private_data = d;
     return ci;
 }
+
+/* Bounded raw-byte bridge for the ZSM container decoder. No hex/text conversion
+ * or zero trimming: container data can contain embedded NUL bytes. */
+int es_zuc_transform(const uint8_t* key, const uint8_t* iv,
+                     const uint8_t* input, size_t length, uint8_t* output)
+{
+    zuc_state_t state;
+    if (!key || !iv || !input || !output || length == 0 || length > 1024 * 1024)
+        return 0;
+    zuc_init(&state, key, iv);
+    zuc_process_bytes(&state, input, length, output);
+    return 1;
+}

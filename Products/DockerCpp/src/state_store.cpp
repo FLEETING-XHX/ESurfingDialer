@@ -48,7 +48,7 @@ StateStore::~StateStore() {
     close(static_cast<int>(handle_));
 #endif
 }
-void StateStore::write(const Snapshot& s, bool alive, std::int64_t epoch,long long report_interval,const PlanSnapshot* plan) {
+void StateStore::write(const Snapshot& s, bool alive, std::int64_t epoch,long long report_interval,const RestartSnapshot* plan) {
     if(epoch <= 0||report_interval<1||report_interval>300) throw std::invalid_argument("INVALID_HEALTH_POLICY");
     auto temporary = directory_ / ("health.json." + instance_ + ".tmp");
     auto target = directory_ / "health.json";
@@ -74,15 +74,12 @@ void StateStore::write(const Snapshot& s, bool alive, std::int64_t epoch,long lo
              << ",\n  \"lastUpdatedAt\": " << epoch
              << ",\n  \"healthWriteIntervalSeconds\": " << report_interval
              << ",\n  \"lastError\": " << (s.error.empty() ? "null" : json_quote(s.error));
-        if(plan)file << ",\n  \"autoReauthEnabled\": " << (plan->enabled?"true":"false")
-             << ",\n  \"autoReauthEstimatedLifetimeSeconds\": " << plan->estimate
-             << ",\n  \"autoReauthLastAuthSuccessAt\": " << plan->last_auth
-             << ",\n  \"autoReauthNextPlannedAt\": " << plan->next
-             << ",\n  \"autoReauthLastObservedLifetimeSeconds\": " << plan->observed
-             << ",\n  \"autoReauthSuccessfulAuthSamples\": " << plan->samples
-             << ",\n  \"autoReauthSafeWindowStartHour\": " << plan->start_hour
-             << ",\n  \"autoReauthSafeWindowEndHour\": " << plan->end_hour
-             << ",\n  \"autoReauthPersistenceOk\": " << (plan->persistence_ok?"true":"false");
+        if(plan)file << ",\n  \"dailyRestartEnabled\": " << (plan->enabled?"true":"false")
+             << ",\n  \"dailyRestartNextPlannedAt\": " << plan->next
+             << ",\n  \"dailyRestartLastTriggeredAt\": " << plan->last_restart
+             << ",\n  \"dailyRestartSafeWindowStartHour\": " << plan->start_hour
+             << ",\n  \"dailyRestartSafeWindowEndHour\": " << plan->end_hour
+             << ",\n  \"dailyRestartPersistenceOk\": " << (plan->persistence_ok?"true":"false");
         file << "\n}\n";
         file.close();
 #ifdef _WIN32

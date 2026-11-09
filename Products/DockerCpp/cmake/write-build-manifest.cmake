@@ -1,0 +1,5 @@
+file(READ "${INPUT}" record)
+file(SHA256 "${BINARY}" binary_digest)
+string(JSON record SET "${record}" binary_sha256 "\"${binary_digest}\"")
+file(WRITE "${OUTPUT}.tmp" "${record}\n")
+file(RENAME "${OUTPUT}.tmp" "${OUTPUT}")

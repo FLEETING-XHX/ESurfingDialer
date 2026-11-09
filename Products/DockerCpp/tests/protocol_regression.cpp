@@ -1,4 +1,5 @@
 #include "esurfing/session.hpp"
+#include "reference_session_fixture.hpp"
 #include <iostream>
 #include <deque>
 using namespace esurfing;
@@ -44,34 +45,36 @@ int main(){try{
     rejects([&]{portal_config(block+block);});
     auto duplicate=block;auto pos=duplicate.find("</settings>");duplicate.insert(pos,"<auth-url>http://10.0.0.1/auth.cgi</auth-url>");check(portal_config(duplicate).has_value(),"IDENTICAL_AUTH_DUPLICATE");
     duplicate=block;duplicate.insert(pos,"<auth-url>http://10.0.0.8/auth.cgi</auth-url>");rejects([&]{portal_config(duplicate);});
-    Server server;Session session(server,ep,{"synthetic-client","02:00:00:00:00:01","2026-10-29 00:00:00"});
+    Server server;Session session(server,ep,{"synthetic-client","02:00:00:00:00:01","2026-10-29 00:00:00"},false,Seconds(240),reference_session_cipher_factory());
     unsigned times=0;session.on_time([&]{return "synthetic-time-"+std::to_string(++times);});
     rejects([&]{session.keep();});session.initialize();auto login=session.login("u<&","synthetic-password");
     check(login.keep=="http://10.0.0.9/keep.cgi","DYNAMIC_KEEP_PRESERVED");check(session.keep()==Seconds(240),"FIRST_KEEP");
     check(server.last_url==login.keep,"USE_LOGIN_KEEP_ENDPOINT");session.terminate();check(server.last_url==login.term,"USE_LOGIN_TERM_ENDPOINT");
     const auto first_cipher_output=server.cipher.encrypt("synthetic-isolation-check");
     Server next_server("066474E5-503E-4B82-98C4-DF4483DAF0B5");next_server.expected_client="second-session";
-    Session next_session(next_server,ep,{"second-session","02:00:00:00:00:02","unused"});unsigned next_times=0;
+    Session next_session(next_server,ep,{"second-session","02:00:00:00:00:02","unused"},false,Seconds(240),reference_session_cipher_factory());unsigned next_times=0;
     next_session.on_time([&]{return "synthetic-time-"+std::to_string(++next_times);});
     next_session.initialize();next_session.login("u<&","synthetic-password");
     check(next_session.keep()==Seconds(240)&&next_server.calls==4,"NEW_GENERATION_REFETCHES_MODULE_AND_USES_CHANGED_ALGORITHM");
     check(server.calls==5&&server.cipher.encrypt("synthetic-isolation-check")==first_cipher_output,"NEW_FACTORY_DOES_NOT_MUTATE_PREVIOUS_SESSION_STATE");
-    Server invalid_server;invalid_server.invalid_keep=true;Session invalid_session(invalid_server,ep,{"synthetic-client","02:00:00:00:00:01","unused"});
+    Server invalid_server;invalid_server.invalid_keep=true;Session invalid_session(invalid_server,ep,{"synthetic-client","02:00:00:00:00:01","unused"},false,Seconds(240),reference_session_cipher_factory());
     unsigned bad_times=0;invalid_session.on_time([&]{return "synthetic-time-"+std::to_string(++bad_times);});
     invalid_session.initialize();invalid_session.login("u<&","synthetic-password");
     bool classified=false;try{invalid_session.keep();}catch(const Failure& e){classified=std::string(e.what())=="HEARTBEAT_PROTOCOL_INVALID";}
     check(classified,"PROTOCOL_FAILURE_DISTINCT_FROM_TRANSPORT_FOR_CONSERVATIVE_PLANNER");
-    Server stale_server;Session stale(stale_server,ep,{"synthetic-client","02:00:00:00:00:01","unused"});
+    Server stale_server;Session stale(stale_server,ep,{"synthetic-client","02:00:00:00:00:01","unused"},false,Seconds(240),reference_session_cipher_factory());
     unsigned callbacks=0;stale.on_progress([&]{if(++callbacks==2)throw Failure("AUTH_GENERATION_CANCELLED",false);});
     rejects([&]{stale.initialize();});check(stale_server.calls==1,"CANCELLED_RESPONSE_CANNOT_START_TICKET_OR_LOGIN");
     Script unknown;unknown.responses={{200,std::string(4,'\0')+char(36)+"FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",{}}};
-    Session unsupported(unknown,ep,{"synthetic-client","02:00:00:00:00:01","unused"});
+    Session unsupported(unknown,ep,{"synthetic-client","02:00:00:00:00:01","unused"},false,Seconds(240),reference_session_cipher_factory());
     bool unsupported_classified=false;try{unsupported.initialize();}catch(const Failure& e){unsupported_classified=std::string(e.what())=="ALGORITHM_UNSUPPORTED"&&e.deterministic;}
     check(unsupported_classified&&unknown.responses.empty(),"UNKNOWN_ALGORITHM_EXPLICIT_DETERMINISTIC_WITHOUT_INTERNAL_REFETCH");
     Policy bounded_policy;bounded_policy.max_recoveries=30;Core bounded(bounded_policy);const Mono zero{};
     for(int i=0;i<3;++i){auto g=*bounded.authorize(zero+Seconds(i*100));bounded.failed(g,"ALGORITHM_UNSUPPORTED",zero+Seconds(i*100),true);}
     check(bounded.snapshot().phase==Phase::paused&&bounded.snapshot().recovery_attempts==3,"REPEATED_UNKNOWN_ALGORITHM_STOPS_BEFORE_GENERAL_30_RECOVERY_LIMIT");
     Script script;script.responses={{200,"<html>not online</html>",{}},{204,"",{}}};check(probe(script,{"http://10.0.0.1/a","http://10.0.0.1/b"}).kind==Probe::online,"UNKNOWN_200_NOT_ONLINE");
+    script.responses={{200,"unexpected page",{}},{503,"unavailable",{}}};auto failures=probe(script,{"http://10.0.0.1/a","http://10.0.0.1/b"});
+    check(failures.kind==Probe::error&&failures.attempted==2&&failures.failures.size()==2&&std::string(failures.failures[0].code)=="HTTP_UNEXPECTED_RESPONSE"&&std::string(failures.failures[1].code)=="HTTP_STATUS_ERROR","ALL_PROBE_FAILURES_PRESERVED_WITHOUT_URLS");
     script.responses={{302,"","/portal"}};check(probe(script,{"http://10.0.0.1/start"}).portal_url=="http://10.0.0.1/portal","RELATIVE_REDIRECT");
     const std::string candidate="http://10.0.0.1/portal?wlanuserip=10.0.0.2&wlanacip=10.0.0.3";
     script.responses={{200,block,{}}};auto recovered=discover(script,{Probe::portal,candidate,duplicate});

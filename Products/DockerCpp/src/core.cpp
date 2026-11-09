@@ -99,6 +99,11 @@ void Core::failed(std::uint64_t g, std::string code, Mono now, bool deterministi
 bool Core::heartbeat_due(Mono now) const {
     return state_.authenticated && heartbeat_due_ && now >= *heartbeat_due_;
 }
+Seconds Core::retry_after(Mono now) const {
+    if(state_.phase==Phase::backoff)return std::max(Seconds(0),std::chrono::ceil<Seconds>(next_retry_-now));
+    if(state_.phase==Phase::online&&state_.heartbeat_failures&&heartbeat_due_)return std::max(Seconds(0),std::chrono::ceil<Seconds>(*heartbeat_due_-now));
+    return Seconds(0);
+}
 void Core::heartbeat_failed(std::uint64_t g, Mono now, bool protocol_rejected) {
     if(!current(g) || state_.phase != Phase::online) return;
     state_.error = protocol_rejected?"HEARTBEAT_PROTOCOL_INVALID":"HEARTBEAT_TRANSPORT_ERROR";

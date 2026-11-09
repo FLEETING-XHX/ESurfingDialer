@@ -134,7 +134,8 @@
     {
       "source": "esurfingclient/app/src/cipher/algo/zuc.c",
       "output": "algo/zuc.c",
-      "sha256": "364fdb0bed2074c909e7254d2c395e02334ac2e713d688780bba148e418946cd"
+      "sha256": "364fdb0bed2074c909e7254d2c395e02334ac2e713d688780bba148e418946cd",
+      "local_sha256": "71408b974fba884978227d8acc1a2d9320b1739ebb7489eef1f3ceb129ef91a1"
     },
     {
       "source": "esurfingclient/app/src/cipher/CipherUtils.c",

@@ -3,8 +3,31 @@
 #include <memory>
 #include <limits>
 #include <cctype>
+#include <algorithm>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#endif
 
 namespace esurfing {
+const char* transport_failure_code(int code) noexcept {
+    switch(code){
+    case CURLE_COULDNT_RESOLVE_HOST:return "HTTP_DNS_FAILED";
+    case CURLE_COULDNT_RESOLVE_PROXY:return "HTTP_PROXY_DNS_FAILED";
+    case CURLE_COULDNT_CONNECT:return "HTTP_CONNECT_FAILED";
+    case CURLE_OPERATION_TIMEDOUT:return "HTTP_TIMEOUT";
+    case CURLE_SSL_CONNECT_ERROR:return "HTTP_TLS_HANDSHAKE_FAILED";
+    case CURLE_PEER_FAILED_VERIFICATION:return "HTTP_TLS_VERIFY_FAILED";
+    case CURLE_SSL_CERTPROBLEM:case CURLE_SSL_CACERT_BADFILE:case CURLE_SSL_CIPHER:return "HTTP_TLS_CONFIG_INVALID";
+    case CURLE_SEND_ERROR:return "HTTP_SEND_FAILED";
+    case CURLE_RECV_ERROR:return "HTTP_RECEIVE_FAILED";
+    case CURLE_GOT_NOTHING:return "HTTP_EMPTY_REPLY";
+    default:return "HTTP_TRANSPORT_ERROR";
+    }
+}
 struct CurlRuntime { CurlRuntime(){if(curl_global_init(CURL_GLOBAL_DEFAULT))throw Failure("CURL_INIT_FAILED");} ~CurlRuntime(){curl_global_cleanup();} };
 struct Transfer { HttpResponse response{};std::size_t limit,headers=0;bool failed=false,invalid_headers=false; };
 static size_t receive(char* bytes,size_t size,size_t n,void* context) noexcept {
@@ -28,14 +51,29 @@ static size_t header(char* bytes,size_t size,size_t n,void* context) noexcept {
         return length;
     }catch(...){return 0;}
 }
+struct SocketPolicy {bool rejected=false;};
+static curl_socket_t open_checked_socket(void* data,curlsocktype purpose,struct curl_sockaddr* address) noexcept {
+    auto& policy=*static_cast<SocketPolicy*>(data);char numeric[INET6_ADDRSTRLEN]{};const void* bytes=nullptr;
+    if(address->family==AF_INET)bytes=&reinterpret_cast<const sockaddr_in*>(&address->addr)->sin_addr;
+    else if(address->family==AF_INET6)bytes=&reinterpret_cast<const sockaddr_in6*>(&address->addr)->sin6_addr;
+    try{
+        if(purpose!=CURLSOCKTYPE_IPCXN||!bytes||!inet_ntop(address->family,bytes,numeric,sizeof(numeric))||forbidden_address(numeric)){
+            policy.rejected=true;return CURL_SOCKET_BAD;
+        }
+    }catch(...){policy.rejected=true;return CURL_SOCKET_BAD;}
+    return ::socket(address->family,address->socktype,address->protocol);
+}
 HttpResponse CurlHttp::perform(const HttpRequest& request) {
+    auto diagnostic=request.diagnostic;if(!diagnostic.attempt)diagnostic.attempt=next_request_attempt();
+    const auto started=std::chrono::steady_clock::now();
+    try {
     static CurlRuntime runtime;
     if(stop_.load())throw Failure("CANCELLED",false);
     auto url=safe_url(request.url,allow_loopback_);
     if(request.limit>1024*1024||request.timeout_seconds<1||request.timeout_seconds>90)throw Failure("HTTP_POLICY_INVALID");
     auto curl=std::unique_ptr<CURL,decltype(&curl_easy_cleanup)>(curl_easy_init(),curl_easy_cleanup);
     if(!curl)throw Failure("CURL_INIT_FAILED");
-    Transfer t; t.limit=request.limit;
+    Transfer t; t.limit=request.limit;SocketPolicy socket_policy;
     auto set=[&](auto option,auto value){if(curl_easy_setopt(curl.get(),option,value)!=CURLE_OK)throw Failure("CURL_OPTION_FAILED");};
     set(CURLOPT_URL,url.c_str());set(CURLOPT_FOLLOWLOCATION,0L);set(CURLOPT_NOSIGNAL,1L);
     set(CURLOPT_PROTOCOLS_STR,"http,https");set(CURLOPT_CONNECTTIMEOUT,std::min(10L,request.timeout_seconds));set(CURLOPT_TIMEOUT,request.timeout_seconds);
@@ -58,14 +96,24 @@ HttpResponse CurlHttp::perform(const HttpRequest& request) {
     }catch(...){curl_slist_free_all(headers);throw;}
     auto holder=std::unique_ptr<curl_slist,decltype(&curl_slist_free_all)>(headers,curl_slist_free_all);
     set(CURLOPT_HTTPHEADER,headers);
+    if(!allow_loopback_){set(CURLOPT_OPENSOCKETFUNCTION,open_checked_socket);set(CURLOPT_OPENSOCKETDATA,&socket_policy);}
     if(request.body){set(CURLOPT_POST,1L);set(CURLOPT_POSTFIELDS,request.body->data());set(CURLOPT_POSTFIELDSIZE_LARGE,static_cast<curl_off_t>(request.body->size()));}
     auto code=curl_easy_perform(curl.get());
+    diagnostic.transport_code=int(code);
+    if(code!=CURLE_OK&&socket_policy.rejected)throw Failure("URL_FORBIDDEN",true);
+    curl_easy_getinfo(curl.get(),CURLINFO_RESPONSE_CODE,&t.response.status);
+    diagnostic.http_status=t.response.status;
+    diagnostic.elapsed_ms=std::clamp<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count(),0,600000);
     if(stop_.load())throw Failure("CANCELLED",false);
     if(t.failed)throw Failure("HTTP_BODY_TOO_LARGE");
     if(t.invalid_headers)throw Failure("HTTP_HEADERS_INVALID");
-    if(code!=CURLE_OK)throw Failure("HTTP_TRANSPORT_ERROR",false);
-    curl_easy_getinfo(curl.get(),CURLINFO_RESPONSE_CODE,&t.response.status);
+    if(code!=CURLE_OK)throw Failure(transport_failure_code(int(code)),false);
+    t.response.diagnostic=diagnostic;
     return std::move(t.response);
+    }catch(Failure& failure){
+        diagnostic.elapsed_ms=std::clamp<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count(),0,600000);
+        failure.diagnostic=diagnostic;throw;
+    }
 }
 std::vector<std::string> probe_urls(std::string_view configured,bool local){
     std::vector<std::string> urls;
@@ -79,11 +127,15 @@ std::vector<std::string> probe_urls(std::string_view configured,bool local){
     return urls;
 }
 Probe probe(Http& http,const std::vector<std::string>& urls,bool local,Seconds budget) {
+    std::optional<Probe::Error> last_error;
+    std::vector<Probe::Error> failures;unsigned attempted=0;
     const auto end=std::chrono::steady_clock::now()+budget;
     for(auto& url:urls) {
         auto remaining=std::chrono::duration_cast<Seconds>(end-std::chrono::steady_clock::now()).count();if(remaining<1)break;
+        ++attempted;
         try {
             HttpRequest request{url};request.limit=128*1024;request.timeout_seconds=std::min<long>(10,remaining);
+            request.diagnostic.operation=Operation::probe;
             auto r=http.perform(request);
             if(r.status>=300&&r.status<=399&&!r.location.empty())return {Probe::portal,resolve_url(url,r.location,local),{}};
             if(r.status==204&&r.body.empty())return {Probe::online,{},{}};
@@ -92,8 +144,10 @@ Probe probe(Http& http,const std::vector<std::string>& urls,bool local,Seconds b
                 auto canonical=safe_url(url,local);
                 if(canonical=="http://www.msftconnecttest.com/connecttest.txt"&&r.body=="Microsoft Connect Test")return {Probe::online,{},{}};
             }
-        }catch(const Failure& e){if(std::string(e.what())=="CANCELLED")throw;}
-    }return {};
+            last_error=Probe::Error{r.status<200||r.status>=400?"HTTP_STATUS_ERROR":"HTTP_UNEXPECTED_RESPONSE",r.diagnostic};
+        }catch(const Failure& e){if(std::string(e.what())=="CANCELLED")throw;last_error=Probe::Error{diagnostic_code(e.what()),e.diagnostic};}
+        if(last_error&&failures.size()<8)failures.push_back(*last_error);
+    }Probe result;result.error_detail=last_error;result.failures=std::move(failures);result.attempted=attempted;return result;
 }
 Endpoints discover(Http& http,const Probe& observation,bool local) {
     std::optional<Failure> cached_failure;
@@ -102,7 +156,7 @@ Endpoints discover(Http& http,const Probe& observation,bool local) {
     for(unsigned hop=0;hop<3;++hop) {
         // Legacy portal discovery used its 10-second probe transport. A chain
         // of three general 45-second auth requests could outlive Core's budget.
-        HttpRequest request{url};request.timeout_seconds=10;
+        HttpRequest request{url};request.timeout_seconds=10;request.diagnostic.operation=Operation::discovery;
         auto r=http.perform(request);
         if(r.status>=300&&r.status<=399){if(r.location.empty())throw Failure("PORTAL_REDIRECT_INVALID");url=resolve_url(url,r.location,local);continue;}
         if(r.status<200||r.status>=300)throw Failure("PORTAL_HTTP_ERROR",false);

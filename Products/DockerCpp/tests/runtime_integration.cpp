@@ -50,10 +50,11 @@ class Server {
                 if(path.starts_with("/ticket.cgi"))data=cipher_.encrypt("<response><ticket>synthetic-ticket-MUST-NOT-LOG</ticket></response>");
                 else if(path=="/auth.cgi"){
                     require(xml.find(user)!=xml.npos&&xml.find(std::string("<passwd>")+secret+"</passwd>")!=xml.npos,"RUNTIME_CREDENTIAL_NOT_SENT");
+                    if(reject_next_login.exchange(false)){++login_rejections;return "HTTP/1.1 503 Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";}
                     data=cipher_.encrypt("<response><keep-url>"+url()+"/keep.cgi</keep-url><term-url>"+url()+"/term.cgi</term-url><keep-retry>5</keep-retry></response>");
                 }else{
                     require(xml.find("10.0.0.2")!=xml.npos&&xml.find("02:11:22:33:44:55")!=xml.npos,"RUNTIME_FROZEN_CONTEXT_CHANGED");
-                    if(path=="/keep.cgi"){++keeps;data=cipher_.encrypt(reject_keeps?"<response><interval>invalid</interval></response>":"<response><interval>5</interval></response>");}
+                    if(path=="/keep.cgi"){const bool reject=reject_keeps.load();if(reject)++keep_rejections;++keeps;data=cipher_.encrypt(reject?"<response><interval>invalid</interval></response>":"<response><interval>5</interval></response>");}
                     else if(path=="/term.cgi"){++terms;data="accepted fixture transport";}
                     else throw Failure("RUNTIME_UNKNOWN_PATH");
                 }
@@ -77,7 +78,9 @@ class Server {
     }
 public:
     unsigned port=0;
-    std::atomic_bool failed=false,slow_probe=false,reject_keeps=false;
+    std::atomic_bool failed=false,slow_probe=false,reject_keeps=false,reject_next_login=false;
+    std::atomic_uint login_rejections=0;
+    std::atomic_uint keep_rejections=0;
     std::atomic_uint keeps=0,terms=0,bootstraps=0;
     explicit Server(bool reject_modules=false):reject_modules_(reject_modules){
         listener_=socket(AF_INET,SOCK_STREAM|SOCK_CLOEXEC,0);require(listener_>=0,"FIXTURE_SOCKET_FAILED");
@@ -95,19 +98,31 @@ int main(int argc,char** argv){
     try{
         const bool paused_mode=argc==3&&std::string(argv[2])=="--paused";
         const bool log_failure=argc==3&&std::string(argv[2])=="--log-failure";
-        require(argc==2||paused_mode||log_failure,"FIXTURE_BINARY_REQUIRED");std::filesystem::create_directory(dir);
+        const bool capture_mode=argc==3&&std::string(argv[2])=="--capture";
+        const bool daily_mode=argc==3&&std::string(argv[2])=="--daily-restart";
+        const bool daily_disabled=argc==3&&std::string(argv[2])=="--daily-restart-disabled";
+        const bool daily_outside=argc==3&&std::string(argv[2])=="--daily-restart-outside-window";
+        const bool daily_late=argc==3&&std::string(argv[2])=="--daily-late-start";
+        const bool heartbeat_recovery=argc==3&&std::string(argv[2])=="--heartbeat-recovery";
+        const bool clock_mode=daily_mode||daily_disabled||daily_outside||daily_late;
+        constexpr std::int64_t clock_base=1790366340; // 03:59 UTC+8.
+        require(argc==2||paused_mode||log_failure||capture_mode||clock_mode||heartbeat_recovery,"FIXTURE_BINARY_REQUIRED");std::filesystem::create_directory(dir);
+        auto clock_file=(dir/"fixture-clock").string();if(clock_mode)write_state_file(clock_file,std::to_string(clock_base+(daily_late?7260:0)));
         write_state_file(dir/"device-state.json",R"({"macAddress":"02:11:22:33:44:55","clientId":"Synthetic-Legacy-ID"})");
         auto secret_file=(dir/"synthetic.secret").string();write_state_file(secret_file,std::string(secret)+"\r\n");
         Server server(paused_mode);auto probe_url=server.url()+"/probe";auto state_dir=dir.string();auto log=(dir/"runtime.log").string();
         child=fork();require(child>=0,"FIXTURE_FORK_FAILED");
         if(child==0){
             int out=open(log.c_str(),O_CREAT|O_WRONLY|O_TRUNC,0600);if(out<0)_exit(90);dup2(out,STDOUT_FILENO);dup2(out,STDERR_FILENO);close(out);
-            setenv("NATIVE_EXPERIMENTAL","1",1);setenv("AUTO_REAUTH_ENABLED","1",1);setenv("STATE_DIR",state_dir.c_str(),1);
+            setenv("NATIVE_EXPERIMENTAL","1",1);setenv("DAILY_RESTART_ENABLED",clock_mode&&!daily_disabled?"1":"0",1);setenv("STATE_DIR",state_dir.c_str(),1);
+            if(clock_mode)setenv("ESURFING_FIXTURE_EPOCH_FILE",clock_file.c_str(),1);else unsetenv("ESURFING_FIXTURE_EPOCH_FILE");
+            setenv("DAILY_RESTART_SAFE_WINDOW_START_HOUR","4",1);setenv("DAILY_RESTART_SAFE_WINDOW_END_HOUR","6",1);
+            setenv("NATIVE_CAPTURE_BOOTSTRAP",capture_mode?"1":"0",1);
             setenv("NETWORK_CHECK_URLS",probe_url.c_str(),1);setenv("NETWORK_CHECK_INTERVAL_SECONDS","1",1);
             setenv("HEALTH_WRITE_INTERVAL_SECONDS","1",1);setenv("LOGIN_CONFIRMATION_INTERVAL_SECONDS","1",1);
             setenv("LOGIN_RETRY_INITIAL_SECONDS","1",1);setenv("LOGIN_RETRY_MAX_SECONDS","5",1);
             setenv("DIALER_USER",user,1);setenv("DIALER_PASSWORD","wrong-environment-value",1);setenv("DIALER_PASSWORD_FILE",secret_file.c_str(),1);unsetenv("DIALER_CLIENT_ID");unsetenv("DIALER_MAC_ADDRESS");
-            unsetenv("LOG_DIR");unsetenv("LOG_FILE_MAX_BYTES");unsetenv("LOG_TOTAL_MAX_BYTES");unsetenv("LOG_RETENTION_DAYS");unsetenv("LOG_ROTATED_FILES");
+            setenv("LOG_DIR",(dir/"host-log").c_str(),1);unsetenv("LOG_FILE_MAX_BYTES");unsetenv("LOG_TOTAL_MAX_BYTES");unsetenv("LOG_RETENTION_DAYS");unsetenv("LOG_ROTATED_FILES");
             execl(argv[1],argv[1],static_cast<char*>(nullptr));_exit(91);
         }
         server.start();auto deadline=std::chrono::steady_clock::now()+Seconds(18);JsonObject health;
@@ -120,32 +135,72 @@ int main(int argc,char** argv){
         }
         if(paused_mode){
             require(!server.failed&&server.bootstraps==3&&health.contains("phase")&&std::get<std::string>(health.at("phase"))=="paused"&&std::get<bool>(health.at("networkOnline"))&&!std::get<bool>(health.at("authenticated")),"PAUSED_NETWORK_SNAPSHOT_STALE_OR_UNBOUNDED_RETRY");
-            require(std::get<std::int64_t>(health.at("autoReauthLastAuthSuccessAt"))==0,"UNSUPPORTED_ALGORITHM_CANNOT_RECORD_AUTH_SUCCESS");
+            require(std::get<std::int64_t>(health.at("dailyRestartLastTriggeredAt"))==0,"FAILED_AUTH_CANNOT_CLAIM_RESTART");
         }else{
             require(!server.failed&&server.keeps>=2&&server.slow_probe,"SLOW_PROBE_PREVENTED_RUNTIME_KEEP");
-            require(std::get<bool>(health.at("authenticated"))&&std::get<bool>(health.at("autoReauthEnabled")),"RUNTIME_NOT_AUTHENTICATED");
-            require(std::get<std::int64_t>(health.at("autoReauthLastAuthSuccessAt"))>0&&std::get<std::int64_t>(health.at("autoReauthNextPlannedAt"))>0,"RUNTIME_PLAN_NOT_UPDATED");
+            require(std::get<bool>(health.at("authenticated"))&&std::get<bool>(health.at("dailyRestartEnabled"))==(clock_mode&&!daily_disabled),"RUNTIME_NOT_AUTHENTICATED");
+            require(std::get<std::int64_t>(health.at("dailyRestartLastTriggeredAt"))==0,"RUNTIME_RESTARTED_BEFORE_WINDOW");
         }
         require(std::get<std::int64_t>(health.at("processId"))==child&&!std::get<std::string>(health.at("instanceId")).empty(),"RUNTIME_OWNER_IDENTITY_INVALID");
+        bool planned_exit=false;int planned_status=0;
+        if(clock_mode){
+            if(!daily_disabled)require(std::get<std::int64_t>(health.at("dailyRestartNextPlannedAt"))==clock_base+(daily_late?86460:60),"SCHEDULE_TARGET_UNEXPECTED");
+            write_state_file(clock_file,std::to_string(clock_base+((daily_outside||daily_late)?7260:60)));
+            auto limit=std::chrono::steady_clock::now()+Seconds(18);
+            while(std::chrono::steady_clock::now()<limit){
+                if(waitpid(child,&planned_status,WNOHANG)==child){planned_exit=true;child=-1;break;}
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            require(planned_exit==daily_mode,"DAILY_RESTART_WINDOW_OR_DISABLE_FAILED");
+            require(server.bootstraps==1,"DAILY_RESTART_MUST_EXIT_NOT_REAUTH_IN_PROCESS");
+            if(daily_mode){
+                require(WIFEXITED(planned_status)&&WEXITSTATUS(planned_status)==0,"DAILY_RESTART_NOT_CLEAN_EXIT");
+                auto persisted=parse_state_json(read_state_file(dir/"daily-restart.json"));
+                require(std::get<std::int64_t>(persisted.at("lastRestartAt"))==clock_base+60,"DAILY_RESTART_CLAIM_NOT_PERSISTED");
+            }else require(!std::filesystem::exists(dir/"daily-restart.json"),"DISABLED_OR_OUTSIDE_WINDOW_WROTE_CLAIM");
+        }
+        if(heartbeat_recovery){
+            server.reject_keeps=true;auto limit=std::chrono::steady_clock::now()+Seconds(15);bool recovered=false;
+            while(std::chrono::steady_clock::now()<limit){
+                if(server.keep_rejections)server.reject_keeps=false;
+                try{if(read_state_file(dir/"runtime.log").find("心跳已恢复（此前失败1次）")!=std::string::npos){recovered=true;break;}}catch(const std::exception&){}
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            require(recovered&&server.keep_rejections==1&&server.bootstraps==1,"HEARTBEAT_RECOVERY_OR_RETRY_FAILED");
+        }
         if(log_failure){
             // Turn the active file into a directory. The next heartbeat error must cause
             // a fatal log write failure, then cancel the real process without an orphan.
             bool found=false;
-            for(const auto& entry:std::filesystem::directory_iterator(dir/"logs"))if(entry.path().extension()==".log"){
+            for(const auto& entry:std::filesystem::directory_iterator(dir/"host-log"))if(entry.path().extension()==".log"){
                 std::filesystem::rename(entry.path(),entry.path().string()+".saved");std::filesystem::create_directory(entry.path());found=true;
             }
             require(found,"RUNTIME_FILE_LOG_MISSING");server.reject_keeps=true;
         }
-        auto stopping=std::chrono::steady_clock::now();if(!log_failure)kill(child,SIGTERM);int status=0;bool exited=false;
-        while(std::chrono::steady_clock::now()-stopping<Seconds(log_failure?12:6)){if(waitpid(child,&status,WNOHANG)==child){exited=true;child=-1;break;}std::this_thread::sleep_for(std::chrono::milliseconds(50));}
-        require(exited&&WIFEXITED(status)&&WEXITSTATUS(status)==(log_failure?1:0),"RUNTIME_STOP_FAILED");
+        if(!planned_exit){
+            auto stopping=std::chrono::steady_clock::now();if(!log_failure)kill(child,SIGTERM);int status=0;bool exited=false;
+            while(std::chrono::steady_clock::now()-stopping<Seconds(log_failure?12:6)){if(waitpid(child,&status,WNOHANG)==child){exited=true;child=-1;break;}std::this_thread::sleep_for(std::chrono::milliseconds(50));}
+            require(exited&&WIFEXITED(status)&&WEXITSTATUS(status)==(log_failure?1:0),"RUNTIME_STOP_FAILED");
+        }
         health=parse_state_json(read_state_file(dir/"health.json"));
         require(!std::get<bool>(health.at("processAlive"))&&!std::get<bool>(health.at("authenticated"))&&std::get<std::string>(health.at("phase"))=="stopped","RUNTIME_FINAL_HEALTH_INVALID");
         require(server.terms==(paused_mode?0u:1u),"RUNTIME_DYNAMIC_TERM_NOT_CALLED");auto logs=read_state_file(dir/"runtime.log");
         std::string file_logs;
-        for(const auto& entry:std::filesystem::directory_iterator(dir/"logs"))if(entry.is_regular_file()&&entry.path().filename()!="native-logs.lock")file_logs+=read_state_file(entry.path());
+        for(const auto& entry:std::filesystem::directory_iterator(dir/"host-log"))if(entry.is_regular_file()&&entry.path().filename()!="native-logs.lock")file_logs+=read_state_file(entry.path());
         require(file_logs.find("STATE")!=file_logs.npos,"RUNTIME_EVENTS_NOT_ARCHIVED");
-        if(!paused_mode)require(file_logs.find("HEARTBEAT_SUMMARY successes=1")!=file_logs.npos,"RUNTIME_HEARTBEAT_SUMMARY_MISSING");
+        require(!std::filesystem::exists(dir/"logs"),"LOG_DIR_OVERRIDE_IGNORED");
+        require(file_logs.find("[NETWORK_STATE] ")!=file_logs.npos,"NETWORK_STATE_NOT_ARCHIVED");
+        require(file_logs.find("[BOOTSTRAP_RECEIVED] 字节数=41 sha256=")!=file_logs.npos,"RUNTIME_BOOTSTRAP_SUMMARY_MISSING");
+        if(capture_mode){
+            auto captured=read_state_file(dir/"diagnostics/bootstrap-1.bin");
+            require(captured==std::string(4,'\0')+char(36)+algorithm,"RUNTIME_CAPTURE_NOT_BOOTSTRAP_BYTES");
+            auto summary=parse_state_json(read_state_file(dir/"diagnostics/bootstrap-1.json"));
+            require(std::get<std::int64_t>(summary.at("encoding"))==-1&&!std::get<bool>(summary.at("loginPayloadCaptured")),"RUNTIME_CAPTURE_METADATA_INVALID");
+        }else require(!std::filesystem::exists(dir/"diagnostics"),"RUNTIME_CAPTURE_MUST_BE_OPT_IN");
+        if(!paused_mode)require(file_logs.find("[HEARTBEAT_OK] 成功次数=1")!=file_logs.npos,"RUNTIME_HEARTBEAT_OK_MISSING");
+        require(file_logs.find("[RESTART_PLAN] 启用=")!=file_logs.npos,"RUNTIME_PLAN_LOG_MISSING");
+        require((file_logs.find("SCHEDULED_RESTART_TRIGGERED")!=file_logs.npos)==daily_mode,"DAILY_RESTART_TRIGGER_LOG_INVALID");
+        if(heartbeat_recovery)require(file_logs.find("[OPERATION_FAILED] 阶段=心跳 错误码=HEARTBEAT_PROTOCOL_INVALID")!=file_logs.npos&&file_logs.find("重试次数=1 重试等待秒=5")!=file_logs.npos,"HEARTBEAT_PROTOCOL_DIAGNOSTIC_MISSING");
         for(auto sensitive:{secret,user,"synthetic-ticket-MUST-NOT-LOG","127.0.0.1","02:11:22:33:44:55"})require(logs.find(sensitive)==logs.npos&&file_logs.find(sensitive)==file_logs.npos,"RUNTIME_SECRET_LOGGED");
         if(log_failure)std::cout<<"real process file-log failure cancels network/session, exits 1, writes stopped health and attempts term once; synthetic loopback only\n";
         else if(paused_mode)std::cout<<"real process unknown algorithm stops after three attempts; paused owner still observes external online without claiming authentication; SIGTERM passed\n";

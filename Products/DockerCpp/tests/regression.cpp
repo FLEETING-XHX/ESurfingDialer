@@ -21,9 +21,13 @@ int main() {
 #endif
         check(converted_ok&&converted.tm_year==138&&converted.tm_mon==0&&converted.tm_mday==19&&converted.tm_hour==3&&converted.tm_min==14&&converted.tm_sec==8,"2038 boundary roundtrip without changing the system clock");
         auto config=RuntimeConfig::read([](const char*){return std::string{};});
-        check(config.policy.max_recoveries==30&&config.probe_budget==Seconds(60)&&config.auto_reauth_enabled,"legacy runtime defaults");
+        check(config.policy.max_recoveries==30&&config.probe_budget==Seconds(60)&&config.daily_restart_enabled,"legacy runtime defaults");
         config=RuntimeConfig::read([](const char* key){return std::string(key)=="HEARTBEAT_INTERVAL_MAX_SECONDS"?std::string("9999"):std::string("bad");});
         check(config.heartbeat_max==Seconds(600)&&config.confirmation_attempts==3,"clamp and malformed env fallback");
+        config=RuntimeConfig::read([](const char* key){return std::string(key)=="AUTO_REAUTH_ENABLED"?std::string("0"):std::string{};});
+        check(!config.daily_restart_enabled,"legacy .env opt-out remains respected");
+        config=RuntimeConfig::read([](const char* key){return std::string(key)=="AUTO_REAUTH_ENABLED"?std::string("0"):std::string(key)=="DAILY_RESTART_ENABLED"?std::string("1"):std::string{};});
+        check(config.daily_restart_enabled&&config.restart_start_hour==4&&config.restart_end_hour==6,"new restart setting takes precedence over old alias");
         Core c;
         c.network(true);
         check(c.snapshot().phase == Phase::external_online && !c.snapshot().authenticated, "external connectivity must not claim session");
@@ -36,6 +40,7 @@ int main() {
         check(c.keep_confirmed(g, Seconds(240), zero), "first keep confirms");
         check(!c.heartbeat_due(zero + Seconds(239)) && c.heartbeat_due(zero + Seconds(240)), "monotonic heartbeat deadline");
         c.heartbeat_failed(g, zero + Seconds(240));
+        check(c.retry_after(zero+Seconds(240))==Seconds(5),"diagnostic retry delay matches actual heartbeat retry");
         check(c.snapshot().authenticated && !c.heartbeat_due(zero + Seconds(244)), "transient probe/transport failure keeps session");
         c.heartbeat_failed(g, zero + Seconds(245));
         c.heartbeat_failed(g, zero + Seconds(255));

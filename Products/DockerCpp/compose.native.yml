@@ -1,19 +1,24 @@
 name: esurfing-native-v300
 services:
   native:
-    build: .
+    build: {context: ., args: {NATIVE_RELEASE_CHANNEL: stable}}
     image: "${DIALER_IMAGE:-esurfing-dialer-native:v3.0.0-amd64}"
     container_name: ESurfingDialerNative-v3.0.0
     network_mode: host
-    # Explicit experimental opt-in is required; never replace the existing Kotlin service.
-    restart: "no"
+    # Formal channel: respect manual stops across Docker/router restarts.
+    restart: unless-stopped
     env_file: .env
     environment:
       STATE_DIR: /data
-      NATIVE_EXPERIMENTAL: "${NATIVE_EXPERIMENTAL:-0}"
+      NATIVE_CAPTURE_BOOTSTRAP: "${NATIVE_CAPTURE_BOOTSTRAP:-0}"
       TZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - native-state:/data
+      - type: bind
+        source: ./log
+        target: /data/logs
+        bind:
+          create_host_path: false
     stop_grace_period: 10s
     read_only: true
     tmpfs:

@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^esurfing-dialer-native:[A-Za-z0-9_.-]+$')][string]$Image,
     [ValidatePattern('^[a-z0-9-]+$')][string]$ReportName='ops-lifecycle',
+    [ValidateSet('0','1')][string]$ExperimentalOptIn='1',
     [string]$Docker='C:/Users/FLEETING/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe'
 )
 $ErrorActionPreference='Stop'
@@ -25,7 +26,7 @@ try {
     if($imageInfo.Architecture -eq 'arm'){$platform+='/v7'}
     $runIdentity=[Guid]::NewGuid().ToString('N')
     $arguments=@('run','-d','--platform',$platform,'--label',"org.esurfing.test-run=$runIdentity",'--network','none','--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=4m','--cap-drop','ALL','--security-opt','no-new-privileges:true',
-        '-e','NATIVE_EXPERIMENTAL=1','-e','DIALER_USER=synthetic','-e','DIALER_PASSWORD=synthetic','-e','NETWORK_CHECK_URLS=http://192.0.2.1/probe','-e','HEALTH_WRITE_INTERVAL_SECONDS=1',$Image)
+        '-e',"NATIVE_EXPERIMENTAL=$ExperimentalOptIn",'-e','DAILY_RESTART_ENABLED=0','-e','DIALER_USER=synthetic','-e','DIALER_PASSWORD=synthetic','-e','NETWORK_CHECK_URLS=http://192.0.2.1/probe','-e','HEALTH_WRITE_INTERVAL_SECONDS=1',$Image)
     $created=Require-Success (Invoke-TaskDocker $arguments)
     [IO.File]::WriteAllText((Join-Path $reportDirectory "$ReportName-create.log"),$created)
     $returnedIds=@($created -split '\r?\n' | ForEach-Object {$_.Trim()} | Where-Object {$_ -match '^[a-f0-9]{64}$'})
@@ -44,7 +45,7 @@ try {
     }
     if(!$health -or $health.processId -ne 1 -or $health.instanceId -notmatch '^[A-Za-z0-9_-]+$' -or $health.authenticated){throw 'Isolated native PID1 health not established'}
     $null=Require-Success (Invoke-TaskDocker @('exec',$ownedContainer,'/app/healthcheck.sh'))
-    $layout=Require-Success (Invoke-TaskDocker @('exec',$ownedContainer,'sh','-c','id -u; readlink /proc/1/exe; stat -c %s /app/esurfing-native; sha256sum /app/esurfing-native; test ! -e /app/native-runtime-fixture; ! command -v java'))
+    $layout=Require-Success (Invoke-TaskDocker @('exec',$ownedContainer,'sh','-c','set -e; id -u; readlink /proc/1/exe; stat -c %s /app/esurfing-native; sha256sum /app/esurfing-native /app/module-profiles/android32-2082-loader.so; test ! -e /app/native-runtime-fixture; ! command -v java; LD_TRACE_LOADED_OBJECTS=1 /app/esurfing-native'))
     [IO.File]::WriteAllText((Join-Path $reportDirectory "$ReportName-layout.log"),$layout)
     $rootSignal=Invoke-TaskDocker @('exec','--user','0',$ownedContainer,'sh','-c','kill -TERM 1')
     if($rootSignal.code -eq 0){throw 'Root unexpectedly signalled UID10001 without capabilities'}

@@ -38,6 +38,11 @@ int main(){
         check(read_state_file(dir/"device-state.json")=="{broken","corrupt source retained");
         value=load_identity(dir,[](const char* key){return std::string(key)=="DIALER_MAC_ADDRESS"?"02:11:22:33:44:55":"Explicit-ID";});
         check(value.client_id=="explicit-id","both explicit overrides may repair state");
+        for(auto text:{R"({})",R"({"macAddress":"02:11:22:33:44:55"})",R"({"clientId":"keep-id"})",R"({"macAddress":"","clientId":"keep-id"})",R"({"macAddress":"02:11:22:33:44:55","clientId":""})"}){
+            write_state_file(dir/"device-state.json",text);
+            rejects([&]{load_identity(dir,noenv);},"existing incomplete identity must not regenerate or fall back to legacy evidence");
+            check(read_state_file(dir/"device-state.json")==text,"incomplete identity preserved byte-for-byte");
+        }
         auto unicode=parse_state_json(R"({"a":"\uD83D\uDE00","n":-9223372036854775808,"b":true,"nil":null})");
         check(std::get<std::string>(unicode.at("a"))=="\xf0\x9f\x98\x80"&&std::get<std::int64_t>(unicode.at("n"))==std::numeric_limits<std::int64_t>::min(),"strict unicode and integer boundaries");
         check(parse_state_json(encode_state_json(unicode))==unicode,"state JSON roundtrip");

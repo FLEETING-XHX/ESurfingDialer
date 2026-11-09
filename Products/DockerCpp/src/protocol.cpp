@@ -1,11 +1,19 @@
 #include "esurfing/protocol.hpp"
 #include <curl/curl.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#endif
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <libxml/xmlsave.h>
 #include <charconv>
 #include <memory>
 #include <set>
 #include <algorithm>
+#include <functional>
 extern "C" {
 #include "utils/sim/SimEvp.h"
 }
@@ -23,6 +31,18 @@ static std::string part(CURLU* u,CURLUPart p,unsigned flags=0) {
     if(curl_url_get(u,p,&v,flags)!=CURLUE_OK) return {};
     std::string result(v); curl_free(v); return result;
 }
+bool forbidden_address(std::string_view text){
+    std::string host(text);if(host.starts_with('[')&&host.ends_with(']'))host=host.substr(1,host.size()-2);
+    if(auto zone=host.find('%');zone!=host.npos)host.resize(zone);
+    auto ipv4_forbidden=[](const unsigned char* p){return p[0]==127||(p[0]==169&&p[1]==254)||(p[0]==0&&p[1]==0&&p[2]==0&&p[3]==0);};
+    unsigned char address[16]{};
+    if(inet_pton(AF_INET,host.c_str(),address)==1)return ipv4_forbidden(address);
+    if(inet_pton(AF_INET6,host.c_str(),address)!=1)return false;
+    bool first_ten_zero=std::all_of(address,address+10,[](auto c){return c==0;});
+    if(first_ten_zero&&address[10]==255&&address[11]==255)return ipv4_forbidden(address+12);
+    bool first_fifteen_zero=std::all_of(address,address+15,[](auto c){return c==0;});
+    return (first_fifteen_zero&&(address[15]==0||address[15]==1))||(address[0]==0xfe&&(address[1]&0xc0)==0x80);
+}
 std::string safe_url(std::string_view value,bool local) {
     if(value.empty()||value.size()>8192||value.find_first_of("\r\n\t#")!=value.npos||value.find('\0')!=value.npos) throw Failure("URL_INVALID");
     Url u(curl_url(),curl_url_cleanup);
@@ -32,7 +52,8 @@ std::string safe_url(std::string_view value,bool local) {
     for(auto* value:{&scheme,&host})for(char& c:*value)if(c>='A'&&c<='Z')c=static_cast<char>(c-'A'+'a');
     if((scheme!="http"&&scheme!="https")||host.empty()||!part(u.get(),CURLUPART_USER).empty()
        ||!part(u.get(),CURLUPART_PASSWORD).empty()||!part(u.get(),CURLUPART_FRAGMENT).empty()) throw Failure("URL_INVALID");
-    if(!local&&(host=="localhost"||host=="[::1]"||host=="0.0.0.0"||host.starts_with("127.")||host.starts_with("169.254."))) throw Failure("URL_FORBIDDEN");
+    auto host_name=host;while(host_name.ends_with('.'))host_name.pop_back();
+    if(!local&&(host_name=="localhost"||host_name.ends_with(".localhost")||forbidden_address(host))) throw Failure("URL_FORBIDDEN");
     if(curl_url_set(u.get(),CURLUPART_SCHEME,scheme.c_str(),0)!=CURLUE_OK||curl_url_set(u.get(),CURLUPART_HOST,host.c_str(),0)!=CURLUE_OK)throw Failure("URL_INVALID");
     return part(u.get(),CURLUPART_URL,CURLU_NO_DEFAULT_PORT);
 }
@@ -90,6 +111,40 @@ static Doc parse(std::string_view s,std::size_t limit=65536) {
     Doc doc(xmlReadMemory(s.data(),static_cast<int>(s.size()),nullptr,"UTF-8",XML_PARSE_NONET|XML_PARSE_NOERROR|XML_PARSE_NOWARNING),xmlFreeDoc);
     if(!doc||doc->intSubset||doc->extSubset||!xmlDocGetRootElement(doc.get()))throw Failure("XML_INVALID");
     return doc;
+}
+std::string normalize_native_request_xml(std::string_view xml,std::string_view current_time) {
+    auto doc=parse(xml);auto root=xmlDocGetRootElement(doc.get());
+    if(root->ns || !xmlStrEqual(root->name,BAD_CAST "request"))throw Failure("REQUEST_XML_INVALID");
+    const std::string time(current_time);
+    if(time.empty()||time.size()>128||time.find('\0')!=time.npos)throw Failure("REQUEST_TIME_INVALID");
+    std::function<void(xmlNode*)> normalize=[&](xmlNode* parent){
+        for(auto node=parent->children;node;){
+            auto next=node->next;
+            if(node->type==XML_COMMENT_NODE||node->type==XML_PI_NODE){xmlUnlinkNode(node);xmlFreeNode(node);}
+            else if(node->type==XML_CDATA_SECTION_NODE){
+                auto text=xmlNewText(node->content);if(!text)throw Failure("REQUEST_XML_FAILED");
+                xmlReplaceNode(node,text);xmlFreeNode(node);
+            }else if(node->type==XML_ELEMENT_NODE){
+                if(node->ns)throw Failure("REQUEST_XML_INVALID");
+                if(parent==root&&xmlStrEqual(node->name,BAD_CAST "local-time"))xmlNodeSetContent(node,BAD_CAST time.c_str());
+                else normalize(node);
+            }
+            node=next;
+        }
+    };
+    normalize(root);
+    auto buffer=std::unique_ptr<xmlBuffer,decltype(&xmlBufferFree)>(xmlBufferCreate(),xmlBufferFree);
+    if(!buffer)throw Failure("REQUEST_XML_FAILED");
+    auto save=xmlSaveToBuffer(buffer.get(),"UTF-8",XML_SAVE_NO_DECL|XML_SAVE_NO_EMPTY);
+    if(!save)throw Failure("REQUEST_XML_FAILED");
+    const auto written=xmlSaveDoc(save,doc.get());const auto closed=xmlSaveClose(save);
+    if(written<0||closed<0)throw Failure("REQUEST_XML_FAILED");
+    std::string body(reinterpret_cast<const char*>(xmlBufferContent(buffer.get())),xmlBufferLength(buffer.get()));
+    // Serializer terminates a document with LF; native serializes just declaration+root.
+    if(!body.empty()&&body.back()=='\n')body.pop_back();
+    auto result=std::string("<?xml version=\"1.0\" encoding=\"utf-8\"?>")+body;
+    if(result.size()>65536)throw Failure("PLAINTEXT_SIZE_INVALID");
+    return result;
 }
 static void find(xmlNode* node,std::string_view name,std::vector<xmlNode*>& out,unsigned depth=0) {
     if(depth>64) throw Failure("XML_DEPTH_INVALID");

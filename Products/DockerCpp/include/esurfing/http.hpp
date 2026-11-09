@@ -11,8 +11,9 @@ struct HttpRequest {
     std::map<std::string,std::string> headers;
     std::size_t limit=128*1024;
     long timeout_seconds=45;
+    RequestDiagnostic diagnostic;
 };
-struct HttpResponse { long status; std::string body, location; };
+struct HttpResponse { long status; std::string body, location; RequestDiagnostic diagnostic; };
 struct Http {
     virtual ~Http()=default;
     virtual HttpResponse perform(const HttpRequest&)=0;
@@ -27,7 +28,12 @@ public:
 struct Probe {
     enum Kind { online, portal, error } kind=error;
     std::string portal_url, portal_body;
+    struct Error { const char* code="UNKNOWN_FAILURE";RequestDiagnostic diagnostic; };
+    std::optional<Error> error_detail;
+    std::vector<Error> failures;
+    unsigned attempted=0;
 };
+const char* transport_failure_code(int code) noexcept;
 Probe probe(Http&,const std::vector<std::string>& urls,bool allow_loopback=false,Seconds budget=Seconds(60));
 std::vector<std::string> probe_urls(std::string_view configured,bool allow_loopback=false);
 Endpoints discover(Http&,const Probe&,bool allow_loopback=false);

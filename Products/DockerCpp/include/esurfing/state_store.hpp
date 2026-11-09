@@ -14,6 +14,6 @@ public:
     StateStore(const StateStore&) = delete;
     StateStore& operator=(const StateStore&) = delete;
     const std::string& instance() const { return instance_; }
-    void write(const Snapshot&, bool alive, std::int64_t epoch_seconds, long long report_interval=10, const PlanSnapshot* plan=nullptr);
+    void write(const Snapshot&, bool alive, std::int64_t epoch_seconds, long long report_interval=10, const RestartSnapshot* plan=nullptr);
 };
 }

@@ -1,9 +1,34 @@
-# 独立算法来源
+# Independent cipher provenance
 
-仅引入 BadGhost520/ESurfingClient-CVersion 的cipher代码，提交f31a19d5c9440fae421df4e4277c4d350df3bf01（v2.2.1-r7）。来源：https://github.com/BadGhost520/ESurfingClient-CVersion 。保留上游Apache-2.0文本在ciphers/LICENSE，逐文件身份和修改说明在ciphers/provenance.json。
+Only cipher code was imported from BadGhost520/ESurfingClient-CVersion, commit
+f31a19d5c9440fae421df4e4277c4d350df3bf01 (v2.2.1-r7):
+https://github.com/BadGhost520/ESurfingClient-CVersion . The upstream Apache-2.0
+text is retained in ciphers/LICENSE. File identities and local changes are
+recorded in ciphers/provenance.json.
 
-factory.c仅保留算法构造函数，移除上游应用全局状态/线程索引及日志，入口改为es_create_cipher。算法/头文件及独立SimEvp兼容层原样复制（文件清单见provenance.json）。未引入上游Web、Mongoose、账户、网络或监管程序。C++适配增加长度/严格hex检查、每实例所有权与互斥，不改变算法。
+factory.c retains algorithm constructors only. Upstream application global state,
+thread indexing and logging were removed; its entry is es_create_cipher. Cipher
+files, headers and the independent SimEvp compatibility layer were copied as
+listed in provenance.json. No upstream Web, Mongoose, account, networking or
+supervision application was imported. C++ adds bounded input/strict hex checks,
+per-instance ownership and synchronization without changing reference algorithms.
 
-工厂表存在及自身往返通过不等于当前Docker ARM32/2082的native等价或校园网兼容。不能根据Windows现场候选直接证明Docker算法。未知模块拒绝，不复用上游无限重取行为。
+A factory entry or self round-trip is not native ARM32/2082 equivalence or campus
+server acceptance. Windows field candidates do not establish Docker equivalence.
+Unknown modules are rejected; upstream unbounded reacquisition is not reused.
 
-本项目后续修改：sm4_common.c的SBOX左移与snow3g_variant.c三处uint16_t提升左移改为显式uint32_t左移，消除UBSan报错。provenance.json分别保留原上游摘要与local_sha256。tests/reference-vectors.tsv是从修改前的参考镜像以全'a'合成输入生成的475条输出；修改后逐条相等。它们不是服务器或ARM32原生黄金向量，且不含用户账号/票据。复核脚本见scripts/Verify-Sources.ps1。
+Local changes: SBOX shifts in sm4_common.c and three promoted uint16_t shifts in
+snow3g_variant.c use explicit uint32_t shifts to remove UBSan failures. Both
+original hashes and local_sha256 are retained. tests/reference-vectors.tsv has
+475 outputs generated from the unmodified reference image with synthetic all-a
+inputs; the modified outputs match. These are not server/ARM native golden
+vectors and contain no user accounts or tickets. See scripts/Verify-Sources.ps1.
+
+On 2026-10-30, a bounded (1 MiB) es_zuc_transform byte API was appended to zuc.c,
+reusing its existing state initialization/processing without changing the
+algorithm. local_sha256 identifies this local file. Production module decoding
+uses system LibLZMA and OpenSSL libcrypto under their package licenses.
+profiles/android32-2082-loader.so is a read-only copy of an existing Docker native
+asset; provenance/hash are in profiles/README.md. It is not part of the Apache-2.0
+reference C code. src/native_cipher.cpp is a parameterized implementation restored
+from local native-boundary/differential evidence and contains no field key/IV.

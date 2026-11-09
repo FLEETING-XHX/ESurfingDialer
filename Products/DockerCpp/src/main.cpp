@@ -6,7 +6,7 @@ int run_native();
 
 int main(int argc, char** argv) {
     if(argc == 2 && std::string(argv[1]) == "--version") {
-        std::cout << "ESurfingDialer Native " ESURFING_VERSION " (experimental; native equivalence pending)\n";
+        std::cout << "ESurfingDialer Native " ESURFING_VERSION " (" ESURFING_RELEASE_CHANNEL ")\n";
         return 0;
     }
     if(argc!=1){

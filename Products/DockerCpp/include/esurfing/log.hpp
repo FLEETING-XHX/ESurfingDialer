@@ -9,6 +9,8 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include "diagnostic.hpp"
+#include "planner.hpp"
 
 namespace esurfing {
 void log_emergency(const std::string& code) noexcept;
@@ -40,11 +42,11 @@ public:
     void maintain(std::chrono::system_clock::time_point, const std::string& day);
     void append(std::chrono::system_clock::time_point, const std::string& line);
 };
-enum class LogEvent { state, login_confirmed, heartbeat_failed, auth_failed, scheduled_reauth,
-    term_sent, term_failed, monitor_failed, stopped };
+enum class LogEvent { state, network_state, login_confirmed, heartbeat_failed, auth_failed, scheduled_restart,
+    term_sent, term_failed, monitor_failed, stopped, module_captured, module_capture_failed, unclean_previous_exit, core_failure, stop_requested };
 // Producers never perform I/O. Overflow or a failed sink is fatal, not silent log loss.
 class EventLog {
-    struct Record { std::chrono::system_clock::time_point time; std::string text; };
+    struct Record { std::chrono::system_clock::time_point time; std::string text, console; };
     LogFiles files_;
     std::function<void(const std::string&)> output_;
     std::mutex mutex_;
@@ -59,7 +61,11 @@ public:
     explicit EventLog(LogConfig, std::function<void(const std::string&)> output={});
     ~EventLog();
     void write(LogEvent, const std::string& code={}) noexcept;
+    void interface_state(const std::string& message) noexcept;
     void heartbeat(const HeartbeatNotice&) noexcept;
+    void bootstrap(std::size_t bytes, const std::string& sha256, int encoding) noexcept;
+    void operation_failure(std::string_view code,const RequestDiagnostic&,unsigned retry_count=0,long retry_delay_seconds=0) noexcept;
+    void plan(const RestartSnapshot&) noexcept;
     bool failed() const { return failed_.load(); }
     bool finish() noexcept;
 };

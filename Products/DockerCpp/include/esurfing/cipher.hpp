@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <array>
 #include <span>
 #include <string>
 #include <string_view>
@@ -13,6 +14,10 @@ class Cipher {
     std::unique_ptr<Impl> impl_;
 public:
     explicit Cipher(std::string_view id);
+    Cipher(std::string_view algorithm_id, const std::array<std::uint8_t,48>& key,
+           const std::array<std::uint8_t,8>& iv);
+    Cipher(std::string_view algorithm_id, const std::array<std::uint8_t,16>& key,
+           const std::array<std::uint8_t,16>& iv);
     ~Cipher();
     Cipher(Cipher&&) noexcept;
     Cipher& operator=(Cipher&&) noexcept;
@@ -20,5 +25,7 @@ public:
     Cipher& operator=(const Cipher&) = delete;
     std::string encrypt(std::string_view xml);
     std::string decrypt(std::string_view hex);
+    std::string_view algorithm_id() const;
+    bool uses_native_xml_profile() const;
 };
 }

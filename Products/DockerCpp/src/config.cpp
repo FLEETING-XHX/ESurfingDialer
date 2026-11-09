@@ -42,9 +42,11 @@ RuntimeConfig RuntimeConfig::read(const std::function<std::string(const char*)>&
     c.confirmation_interval=Seconds(number("LOGIN_CONFIRMATION_INTERVAL_SECONDS",2,1,30));
     c.portal_threshold=static_cast<unsigned>(number("PORTAL_DETECTION_THRESHOLD",12,1,120));
     c.confirmation_attempts=static_cast<unsigned>(number("LOGIN_CONFIRMATION_ATTEMPTS",3,1,10));
-    c.auto_reauth_enabled=number("AUTO_REAUTH_ENABLED",1,0,1)!=0;
-    c.reauth_start_hour=static_cast<unsigned>(number("AUTO_REAUTH_SAFE_WINDOW_START_HOUR",4,0,23));
-    c.reauth_end_hour=static_cast<unsigned>(number("AUTO_REAUTH_SAFE_WINDOW_END_HOUR",6,0,24));
+    // Preserve existing .env opt-out/window settings unless the new names are set.
+    c.daily_restart_enabled=number("DAILY_RESTART_ENABLED",number("AUTO_REAUTH_ENABLED",1,0,1),0,1)!=0;
+    c.restart_start_hour=static_cast<unsigned>(number("DAILY_RESTART_SAFE_WINDOW_START_HOUR",number("AUTO_REAUTH_SAFE_WINDOW_START_HOUR",4,0,23),0,23));
+    c.restart_end_hour=static_cast<unsigned>(number("DAILY_RESTART_SAFE_WINDOW_END_HOUR",number("AUTO_REAUTH_SAFE_WINDOW_END_HOUR",6,0,24),0,24));
+    if(c.restart_start_hour>=c.restart_end_hour)throw std::invalid_argument("RESTART_WINDOW_INVALID");
     c.policy.validate();return c;
 }
 }

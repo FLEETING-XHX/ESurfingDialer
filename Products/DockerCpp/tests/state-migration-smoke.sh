@@ -23,7 +23,7 @@ sha256sum "$legacy/device-state.json" "$legacy/reauth-plan.json" "$legacy/health
 cp "$legacy/device-state.json" "$legacy/reauth-plan.json" "$native/"
 chmod 400 "$legacy/device-state.json" "$legacy/reauth-plan.json" "$legacy/health.json" "$legacy/.env"
 chmod 500 "$legacy"
-NATIVE_EXPERIMENTAL=1 AUTO_REAUTH_ENABLED=1 DIALER_USER=synthetic DIALER_PASSWORD=synthetic \
+NATIVE_EXPERIMENTAL=1 DAILY_RESTART_ENABLED=0 DIALER_USER=synthetic DIALER_PASSWORD=synthetic \
 STATE_DIR="$native" NETWORK_CHECK_URLS=http://192.0.2.1/probe HEALTH_WRITE_INTERVAL_SECONDS=1 \
   "$binary" >"$directory/native.log" 2>&1 &
 child="$!"
@@ -31,7 +31,7 @@ attempt=0
 while [ ! -s "$native/health.json" ] && [ "$attempt" -lt 50 ]; do sleep 0.1; attempt=$((attempt+1)); done
 [ -s "$native/health.json" ] || { cat "$directory/native.log"; exit 1; }
 jq -e '.macAddress=="02:aa:bb:cc:dd:ee" and .clientId=="synthetic-rollback-id"' "$native/device-state.json" >/dev/null
-jq -e '.schemaVersion==2 and .successfulAuthSamples==0 and .lastObservedLifetimeSeconds==0' "$native/reauth-plan.json" >/dev/null
+jq -e '.schemaVersion==1 and .successfulAuthSamples==3 and .lastObservedLifetimeSeconds==3600' "$native/reauth-plan.json" >/dev/null
 jq -e '.schemaVersion==3 and .authenticated==false and .implementation=="cpp" and .processAlive==true' "$native/health.json" >/dev/null
 [ ! -e "$native/.env" ]
 kill -TERM "$child"
@@ -39,4 +39,4 @@ wait "$child"
 child=""
 jq -e '.phase=="stopped" and .processAlive==false' "$native/health.json" >/dev/null
 sha256sum -c "$directory/legacy-before.sha256" >/dev/null
-echo 'synthetic state copy, native identity/plan upgrade, isolated health and byte-identical legacy fallback files passed; no Kotlin authentication or production rollback executed'
+echo 'synthetic state copy, native identity migration and untouched retired plan, isolated health and byte-identical legacy fallback files passed; no Kotlin authentication or production rollback executed'

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Opt-in supervisor for the native image; never starts/stops/restarts containers.
 set -efu
-CONTAINER_NAME="${CONTAINER_NAME:-ESurfingDialerNative}"
+CONTAINER_NAME="${CONTAINER_NAME:-ESurfingDialerNative-v3.0.0}"
 case "$CONTAINER_NAME" in ''|*[!a-zA-Z0-9_.-]*) exit 1 ;; esac
 CHECK_INTERVAL_SECONDS="${CHECK_INTERVAL_SECONDS:-60}"
 FAIL_THRESHOLD="${FAIL_THRESHOLD:-3}"
