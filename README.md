@@ -2,9 +2,9 @@
 
 **ESurfingDialer / Tianyi Campus** 是校园网认证工具，提供 Windows 客户端和 Docker 软路由版本，可以根据使用环境选择。
 
-本项目采用单仓库多产品结构：`Products/Windows`为C#/WPF客户端，`Products/Docker`为Kotlin Docker版，`Products/DockerCpp`为C++实验版。产品文档按`Docs/Windows`、`Docs/Docker`、`Docs/DockerCpp`分类；设计、资源、研究分别在Design、Assets、Research，本地产物在artifacts。
+本项目在同一个仓库维护多个产品。Windows 版有 C#/WPF 客户端（`Products/Windows`）和 C++/Qt Quick 测试版（`Products/WindowsCpp`）。软路由版有 Kotlin Docker（`Products/Docker`）和 DockerCpp（`Products/DockerCpp`）。
 
-源码入口、未来Windows C++规划和测试包位置见[目录与产物说明](Docs/目录与产物说明.md)。Docker v2.4.1尚未打包；C++版尚未通过现场稳定性验收。
+源码和本地产物位置见[目录与产物说明](Docs/目录与产物说明.md)。
 
 如果你更熟悉“天翼校园”这个名字，也可以用“天翼校园认证”“校园网认证”或“ESurfingDialer”等关键词找到本项目。
 
@@ -20,6 +20,14 @@ v2.4 汇入认证通道、门户解析和连接恢复修复，更新界面、内
 
 升级前完全退出旧客户端并备份账户配置。此前 UA2104 修复版已通过一次真实登录、确认心跳和外网访问；v2.4 的真实切网、休眠恢复、安装升级矩阵与长期稳定仍需继续验收。Windows v2.2 有已知认证失败问题，建议使用新版。
 
+### Windows C++ 测试版
+
+**0.1.1** 面向 Windows x64，采用 Qt Quick 界面和原生 C++ 认证核心，使用 2082 认证通道。安装包包含所需运行库，支持无需 Qt 开发环境启动。
+
+默认精简安装包实测 **29.38 MiB**，安装并首次启动后 **96.84 MiB**。省磁盘构建的安装包为 **32.57 MiB**，安装后为 **88.73 MiB**，两种口径均包含各自的完整文件。
+
+当前可从源码构建测试安装包。已完成离线回归及本机安装、启动和卸载验证，真实校园网登录与长期运行仍待现场验收。构建命令和两种打包方式见 [WindowsCpp README](Products/WindowsCpp/README.md)。
+
 ### Docker 软路由版
 
 使用 iStoreOS / OpenWrt 软路由，可选择 **v2.4 离线部署包**，仅支持 **amd64 / x86_64**。设备需要已安装 Docker 和 Docker Compose。
@@ -34,8 +42,7 @@ v2.4 汇入门户兼容、会话恢复、健康监督、日志限额与审查修
 
 ## 版本说明
 
-- 从本次发布起，Windows 和 Docker 统一使用 **v2.4**，放在[同一个 Release](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.4) 中。
-- Release 的两个产品附件分别是 Windows `.exe` 安装器与 Docker `.zip` 离线包，按文件名选择。
+- [v2.4 Release](https://github.com/FLEETING-XHX/ESurfingDialer/releases/tag/v2.4) 提供 Windows C#/WPF `.exe` 安装器和 Kotlin Docker `.zip` 离线包。
 - 两个产品分别维护源码与认证核心；旧版本仍可从[历史 Releases](https://github.com/FLEETING-XHX/ESurfingDialer/releases) 查看。
 - 真实认证与长期验收范围见[版本说明](Docs/V2.4-RELEASE.md)，本地回归结果不能替代现场长期验证。
 
